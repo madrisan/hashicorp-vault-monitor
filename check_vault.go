@@ -29,7 +29,7 @@ func checkSealStatus(addr string) (bool, error) {
 		return true, err
 	}
 
-	return status.Sealed, err
+	return status.Sealed, nil
 }
 
 func main() {
