@@ -67,7 +67,7 @@ $GOPATH/bin/hashicorp-vault-seal-monitor
 or
 
 ```
-$GOPATH/bin/hashicorp-vault-monitoring -address=http://127.0.0.1:8200
+$GOPATH/bin/hashicorp-vault-seal-monitor -address=http://127.0.0.1:8200
 ```
 The randomly generated *Root Token* can be used to login to the Vault web
 interface at the URL
