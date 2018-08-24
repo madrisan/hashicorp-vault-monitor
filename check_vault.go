@@ -21,8 +21,9 @@ var policies string
 
 func init() {
 	const (
-		statusMsg = "Returns the Vault status (sealed/unsealed)"
-		policiesMgs = "Check for the existance of the given policies"
+		statusMsg   = "Returns the Vault status (sealed/unsealed)"
+		policiesMgs = "Comma-separated list of policies " +
+			"to be checked for existance"
 	)
 
 	flag.BoolVar(&status, "status", false, statusMsg)
@@ -118,7 +119,7 @@ func main() {
 		}
 	} else if policies != "" {
 		ok, err := checkForPolicies(
-				*address, *token, strings.Split(policies, ","))
+			*address, *token, strings.Split(policies, ","))
 		if err != nil {
 			log.Fatal(err)
 		}
