@@ -59,18 +59,32 @@ docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
 ```
 
 You can now run the monitoring binary by entering the commands:
+
+```
+$GOPATH/bin/hashicorp-vault-seal-monitor \
+    -address=http://127.0.0.1:8200 \
+    -status
+$GOPATH/bin/hashicorp-vault-seal-monitor \
+    -address=http://127.0.0.1:8200 \
+    -token="39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -policies="root,saltstack"
+```
+
+Note that you should replace `39d2c7...` with the generated *Root token* from
+your output.
+
+You can omit the `-address` and `-policies` flags by setting the environment
+variables `VAULT_ADDR` and `VAULT_TOKEN`:
 ```
 export VAULT_ADDR="http://127.0.0.1:8200"
-$GOPATH/bin/hashicorp-vault-seal-monitor
+export VAULT_TOKEN="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+
+$GOPATH/bin/hashicorp-vault-seal-monitor -status
+$GOPATH/bin/hashicorp-vault-seal-monitor -policies="root,saltstack"
 ```
 
-or
-
-```
-$GOPATH/bin/hashicorp-vault-seal-monitor -address=http://127.0.0.1:8200
-```
-The randomly generated *Root Token* can be used to login to the Vault web
-interface at the URL
+The *Root Token* can also be used to login to the Vault web interface at the
+URL
 ```
 http://127.0.0.1:8200/ui
 ```
