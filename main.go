@@ -17,18 +17,17 @@
 package main // import "github.com/madrisan/hashicorp-vault-monitor"
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/hashicorp/vault/api"
 	"log"
 	"os"
-	"sort"
 	"strings"
 )
 
 const (
 	defaultVaultAddr string = "https://127.0.0.1:8200"
-	defaultToken     string = ""
 )
 
 var client *api.Client // https://godoc.org/github.com/hashicorp/vault/api
@@ -74,34 +73,37 @@ func checkSealStatus(address string) (bool, error) {
 	return status.Sealed, nil
 }
 
-func stringInSlice(x string, data []string) bool {
-	i := sort.Search(
-		len(data), func(i int) bool { return data[i] >= x })
-	return i < len(data) && data[i] == x
+func contains(items []string, item string) bool {
+	for _, i := range items {
+		if i == item {
+			return true
+		}
+	}
+	return false
 }
 
-func checkForPolicies(address, token string, policies []string) (bool, error) {
+func checkForPolicies(address, token string, policies []string) error {
 	client, err := initClient(address)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	if token != "" {
 		client.SetToken(token)
 	}
 
-	installedPolicies, err := client.Sys().ListPolicies()
+	activePolicies, err := client.Sys().ListPolicies()
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	for _, policy := range policies {
-		if stringInSlice(policy, installedPolicies) == false {
-			return false, nil
+		if !contains(activePolicies, policy) {
+			return errors.New("No such Vault Policy: " + policy)
 		}
 	}
 
-	return true, nil
+	return nil
 }
 
 func main() {
@@ -113,7 +115,7 @@ func main() {
 		"The address of the Vault server. "+
 			"Overrides the VAULT_ADDR environment variable if set.")
 
-	vaultToken := defaultToken
+	var vaultToken string
 	if envToken := os.Getenv("VAULT_TOKEN"); envToken != "" {
 		vaultToken = envToken
 	}
@@ -134,19 +136,15 @@ func main() {
 			fmt.Println("Vault unsealed")
 		}
 	} else if policies != "" {
-		ok, err := checkForPolicies(
+		err := checkForPolicies(
 			*address, *token, strings.Split(policies, ","))
 		if err != nil {
-			log.Fatal(err)
-		}
-		if ok {
-			fmt.Println("All the policies are available")
+			fmt.Fprintln(os.Stderr, err)
 		} else {
-			fmt.Fprintln(os.Stderr,
-				"At least one policy is not installed")
+			fmt.Println("All the Vault Policies are available")
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "Syntax error")
+		fmt.Fprintln(os.Stderr, "Syntax error: missing -status or -policies flag")
 		os.Exit(1)
 	}
 }
