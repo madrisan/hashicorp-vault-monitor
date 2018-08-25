@@ -1,3 +1,4 @@
+![Release Status](https://img.shields.io/badge/status-beta-yellow.svg)
 [![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](https://spdx.org/licenses/MPL-2.0.html)
 
 # Hashicorp Vault Monitor
