@@ -89,4 +89,9 @@ URL
 ```
 http://127.0.0.1:8200/ui
 ```
-![](images/HashiCorp-Vault-web-ui.png?raw=true "HashiCorp Vault Web UI")
+
+![](images/HashiCorp-Vault-web-ui-login.png?raw=true "HashiCorp Vault Web UI Login")
+###### Image 1. Screenshot of the web UI login page
+
+![](images/HashiCorp-Vault-web-ui-homepage.png?raw=true "HashiCorp Vault Web UI Homepage")
+###### Image 2. Screenshot of the web UI homepage
