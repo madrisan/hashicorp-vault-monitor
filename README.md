@@ -1,6 +1,6 @@
 [![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](https://spdx.org/licenses/MPL-2.0.html)
 
-# Hashicorp Vault Seal Monitor
+# Hashicorp Vault Monitor
 
 ![](images/HashiCorp-Vault-logo.png?raw=true "HashiCorp Vault")
 
@@ -10,8 +10,8 @@
 export GOPATH="$HOME/Development/go"
 
 go get -u github.com/hashicorp/vault/api
-go get -u github.com/madrisan/hashicorp-vault-seal-monitor
-go install github.com/madrisan/hashicorp-vault-seal-monitor
+go get -u github.com/madrisan/hashicorp-vault-monitor
+go install github.com/madrisan/hashicorp-vault-monitor
 ```
 ## How to test the monitoring binary
 
@@ -61,10 +61,10 @@ docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
 You can now run the monitoring binary by entering the commands:
 
 ```
-$GOPATH/bin/hashicorp-vault-seal-monitor \
+$GOPATH/bin/hashicorp-vault-monitor \
     -address=http://127.0.0.1:8200 \
     -status
-$GOPATH/bin/hashicorp-vault-seal-monitor \
+$GOPATH/bin/hashicorp-vault-monitor \
     -address=http://127.0.0.1:8200 \
     -token="39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
     -policies="root,saltstack"
@@ -79,8 +79,8 @@ variables `VAULT_ADDR` and `VAULT_TOKEN`:
 export VAULT_ADDR="http://127.0.0.1:8200"
 export VAULT_TOKEN="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 
-$GOPATH/bin/hashicorp-vault-seal-monitor -status
-$GOPATH/bin/hashicorp-vault-seal-monitor -policies="root,saltstack"
+$GOPATH/bin/hashicorp-vault-monitor -status
+$GOPATH/bin/hashicorp-vault-monitor -policies="root,saltstack"
 ```
 
 The *Root Token* can also be used to login to the Vault web interface at the
