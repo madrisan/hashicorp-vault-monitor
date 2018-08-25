@@ -1,4 +1,4 @@
-package main // import "github.com/madrisan/hashicorp-vault-seal-monitor"
+package main // import "github.com/madrisan/hashicorp-vault-monitor"
 
 import (
 	"flag"
