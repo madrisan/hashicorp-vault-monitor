@@ -26,23 +26,25 @@ import (
 	"strings"
 )
 
-const (
-	defaultVaultAddr string = "https://127.0.0.1:8200"
-)
+const defaultVaultAddr = "https://127.0.0.1:8200"
 
 var client *api.Client // https://godoc.org/github.com/hashicorp/vault/api
+var address string
 var status bool
 var policies string
+var token string
 
 func init() {
-	const (
-		statusMsg   = "Returns the Vault status (sealed/unsealed)"
-		policiesMgs = "Comma-separated list of policies " +
-			"to be checked for existance"
-	)
-
-	flag.BoolVar(&status, "status", false, statusMsg)
-	flag.StringVar(&policies, "policies", "", policiesMgs)
+	flag.StringVar(&address, "address", defaultVaultAddr,
+		"The address of the Vault server. "+
+			"Overrides the "+api.EnvVaultAddress+" environment variable if set")
+	flag.BoolVar(&status, "status", false,
+		"Returns the Vault status (sealed/unsealed)")
+	flag.StringVar(&policies, "policies", "",
+		"Comma-separated list of policies to be checked for existance")
+	flag.StringVar(&token, "token", "",
+		"The token to access Vault. "+
+			"Overrides the "+api.EnvVaultToken+" environment variable if set")
 }
 
 func initClient(address string) (*api.Client, error) {
@@ -107,26 +109,28 @@ func checkForPolicies(address, token string, policies []string) error {
 }
 
 func main() {
-	vaultAddress := defaultVaultAddr
-	if envAddress := os.Getenv("VAULT_ADDR"); envAddress != "" {
-		vaultAddress = envAddress
-	}
-	address := flag.String("address", vaultAddress,
-		"The address of the Vault server. "+
-			"Overrides the VAULT_ADDR environment variable if set.")
+	var envAddress string
+	var envToken string
 
-	var vaultToken string
-	if envToken := os.Getenv("VAULT_TOKEN"); envToken != "" {
-		vaultToken = envToken
+	// Parse the environment variables
+	if v := os.Getenv(api.EnvVaultAddress); v != "" {
+		envAddress = v
 	}
-	token := flag.String("token", vaultToken,
-		"The token to access Vault. "+
-			"Overrides the VAULT_TOKEN environment variable if set.")
+	if v := os.Getenv(api.EnvVaultToken); v != "" {
+		envToken = v
+	}
+
+	if envAddress != "" && address != "" {
+		address = envAddress
+	}
+	if envToken != "" && token != "" {
+		token = envToken
+	}
 
 	flag.Parse()
 
 	if status {
-		sealStatus, err := checkSealStatus(*address)
+		sealStatus, err := checkSealStatus(address)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -137,7 +141,7 @@ func main() {
 		}
 	} else if policies != "" {
 		err := checkForPolicies(
-			*address, *token, strings.Split(policies, ","))
+			address, token, strings.Split(policies, ","))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		} else {
