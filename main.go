@@ -48,12 +48,9 @@ func init() {
 }
 
 func initClient(address string) (*api.Client, error) {
-	client, err := api.NewClient(nil)
-	if err != nil {
-		return nil, err
-	}
-
-	err = client.SetAddress(address)
+	client, err := api.NewClient(&api.Config{
+		Address: address,
+	})
 	if err != nil {
 		return nil, err
 	}
