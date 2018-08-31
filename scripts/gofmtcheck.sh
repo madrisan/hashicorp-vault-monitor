@@ -8,7 +8,7 @@ gofmt_files="$(\
 
 if [[ -n ${gofmt_files} ]]; then 
     echo 'gofmt needs running on the following files:'
-    echo "  ${gofmt_files}"
+    echo "${gofmt_files}"
     echo
     exit 1
 fi
