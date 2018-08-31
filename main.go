@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/vault/api"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -32,6 +33,7 @@ var client *api.Client // https://godoc.org/github.com/hashicorp/vault/api
 var address string
 var status bool
 var policies string
+var readkey string
 var token string
 
 func init() {
@@ -42,6 +44,8 @@ func init() {
 		"Returns the Vault status (sealed/unsealed)")
 	flag.StringVar(&policies, "policies", "",
 		"Comma-separated list of policies to be checked for existance")
+	flag.StringVar(&readkey, "readkey", "",
+		"Read a Vault secret")
 	flag.StringVar(&token, "token", "",
 		"The token to access Vault. "+
 			"Overrides the "+api.EnvVaultToken+" environment variable if set")
@@ -105,6 +109,56 @@ func checkForPolicies(address, token string, policies []string) error {
 	return nil
 }
 
+func getRawField(data interface{}, field string) string {
+	var val interface{}
+	switch data.(type) {
+	case *api.Secret:
+		val = data.(*api.Secret).Data[field]
+	case map[string]interface{}:
+		val = data.(map[string]interface{})[field]
+	}
+
+	if val == nil {
+		// Field 'field' not present in secret
+		return ""
+	}
+
+	return val.(string)
+}
+
+func readSecret(keypath, address, token string) (string, error) {
+	client, err := initClient(address)
+	if err != nil {
+		return "", err
+	}
+
+	if token != "" {
+		client.SetToken(token)
+	}
+
+	// see: https://godoc.org/github.com/hashicorp/vault/api#Secret
+	path, key := filepath.Split(keypath)
+	secret, err := client.Logical().Read(path)
+	if err != nil {
+		return "", errors.New(
+			fmt.Sprintf("Error reading %s: %s", path, err))
+	}
+	if secret == nil {
+		return "", errors.New(
+			fmt.Sprintf("No value found at %s", path))
+	}
+
+	// secret.Data:
+	// - data -> map[akey:this-is-a-test]
+	// - metadata -> map[created_time:2018-08-31T15:36:31.894655728Z deletion_time: destroyed:false version:3]
+	if data, ok := secret.Data["data"]; ok && data != nil {
+		value := getRawField(data, key)
+		return value, nil
+	} else {
+		return "", errors.New(fmt.Sprintf("No data found at %s", path))
+	}
+}
+
 func main() {
 	var envAddress string
 	var envToken string
@@ -143,6 +197,17 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 		} else {
 			fmt.Println("All the Vault Policies are available")
+		}
+	} else if readkey != "" {
+		secret, err := readSecret(readkey, address, token)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		} else {
+			// export VAULT_ADDR="http://127.0.0.1:8200"
+			// export VAULT_TOKEN="..."
+			// $GOPATH/bin/hashicorp-vault-monitor -readkey secret/data/test/testkey
+			//   -> /v1/map[testkey:this-is-a-secret] -> "this-is-a-secret"
+			fmt.Printf("Secret: \"%v\"\n",secret)
 		}
 	} else {
 		fmt.Fprintln(os.Stderr, "Syntax error: missing -status or -policies flag")
