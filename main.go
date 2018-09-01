@@ -109,7 +109,7 @@ func checkForPolicies(address, token string, policies []string) error {
 	return nil
 }
 
-func getRawField(data interface{}, field string) string {
+func getRawField(data interface{}, field string) (string, error) {
 	var val interface{}
 	switch data.(type) {
 	case *api.Secret:
@@ -119,11 +119,11 @@ func getRawField(data interface{}, field string) string {
 	}
 
 	if val == nil {
-		// Field 'field' not present in secret
-		return ""
+		return "", errors.New(
+			fmt.Sprintf("Field '%s' not present in secret", field))
 	}
 
-	return val.(string)
+	return val.(string), nil
 }
 
 func readSecret(keypath, address, token string) (string, error) {
@@ -152,8 +152,8 @@ func readSecret(keypath, address, token string) (string, error) {
 	// - data -> map[akey:this-is-a-test]
 	// - metadata -> map[created_time:2018-08-31T15:36:31.894655728Z deletion_time: destroyed:false version:3]
 	if data, ok := secret.Data["data"]; ok && data != nil {
-		value := getRawField(data, key)
-		return value, nil
+		value, err := getRawField(data, key)
+		return value, err
 	} else {
 		return "", errors.New(fmt.Sprintf("No data found at %s", path))
 	}
@@ -207,7 +207,7 @@ func main() {
 			// export VAULT_TOKEN="..."
 			// $GOPATH/bin/hashicorp-vault-monitor -readkey secret/data/test/testkey
 			//   -> /v1/map[testkey:this-is-a-secret] -> "this-is-a-secret"
-			fmt.Printf("Secret: \"%v\"\n",secret)
+			fmt.Printf("Found value: '%v'\n", secret)
 		}
 	} else {
 		fmt.Fprintln(os.Stderr, "Syntax error: missing -status or -policies flag")
