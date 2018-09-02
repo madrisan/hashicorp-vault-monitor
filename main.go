@@ -51,7 +51,7 @@ func init() {
 			"Overrides the "+api.EnvVaultToken+" environment variable if set")
 }
 
-func initClient(address string) (*api.Client, error) {
+func VaultClientInit(address string) (*api.Client, error) {
 	client, err := api.NewClient(&api.Config{
 		Address: address,
 	})
@@ -62,8 +62,8 @@ func initClient(address string) (*api.Client, error) {
 	return client, nil
 }
 
-func checkSealStatus(address string) (bool, error) {
-	client, err := initClient(address)
+func CheckVaultSealStatus(address string) (bool, error) {
+	client, err := VaultClientInit(address)
 	if err != nil {
 		return true, err
 	}
@@ -76,7 +76,7 @@ func checkSealStatus(address string) (bool, error) {
 	return status.Sealed, nil
 }
 
-func contains(items []string, item string) bool {
+func Contains(items []string, item string) bool {
 	for _, i := range items {
 		if i == item {
 			return true
@@ -85,8 +85,8 @@ func contains(items []string, item string) bool {
 	return false
 }
 
-func checkForPolicies(address, token string, policies []string) error {
-	client, err := initClient(address)
+func CheckVaultPolicies(address, token string, policies []string) error {
+	client, err := VaultClientInit(address)
 	if err != nil {
 		return err
 	}
@@ -101,7 +101,7 @@ func checkForPolicies(address, token string, policies []string) error {
 	}
 
 	for _, policy := range policies {
-		if !contains(activePolicies, policy) {
+		if !Contains(activePolicies, policy) {
 			return errors.New("No such Vault Policy: " + policy)
 		}
 	}
@@ -109,7 +109,7 @@ func checkForPolicies(address, token string, policies []string) error {
 	return nil
 }
 
-func getRawField(data interface{}, field string) (string, error) {
+func GetRawField(data interface{}, field string) (string, error) {
 	var val interface{}
 	switch data.(type) {
 	case *api.Secret:
@@ -126,8 +126,8 @@ func getRawField(data interface{}, field string) (string, error) {
 	return val.(string), nil
 }
 
-func readSecret(keypath, address, token string) (string, error) {
-	client, err := initClient(address)
+func ReadVaultSecret(keypath, address, token string) (string, error) {
+	client, err := VaultClientInit(address)
 	if err != nil {
 		return "", err
 	}
@@ -152,7 +152,7 @@ func readSecret(keypath, address, token string) (string, error) {
 	// - data -> map[akey:this-is-a-test]
 	// - metadata -> map[created_time:2018-08-31T15:36:31.894655728Z deletion_time: destroyed:false version:3]
 	if data, ok := secret.Data["data"]; ok && data != nil {
-		value, err := getRawField(data, key)
+		value, err := GetRawField(data, key)
 		return value, err
 	} else {
 		return "", errors.New(fmt.Sprintf("No data found at %s", path))
@@ -181,7 +181,7 @@ func main() {
 	flag.Parse()
 
 	if status {
-		sealStatus, err := checkSealStatus(address)
+		sealStatus, err := CheckVaultSealStatus(address)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -191,7 +191,7 @@ func main() {
 			fmt.Println("Vault unsealed")
 		}
 	} else if policies != "" {
-		err := checkForPolicies(
+		err := CheckVaultPolicies(
 			address, token, strings.Split(policies, ","))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -199,7 +199,7 @@ func main() {
 			fmt.Println("All the Vault Policies are available")
 		}
 	} else if readkey != "" {
-		secret, err := readSecret(readkey, address, token)
+		secret, err := ReadVaultSecret(readkey, address, token)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		} else {
