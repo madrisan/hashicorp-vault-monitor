@@ -28,6 +28,11 @@ import (
 )
 
 const defaultVaultAddr = "https://127.0.0.1:8200"
+const (
+	StateOk byte = iota
+	StateWarning
+	StateCritical
+)
 
 var client *api.Client // https://godoc.org/github.com/hashicorp/vault/api
 var address string
@@ -35,6 +40,11 @@ var status bool
 var policies string
 var readkey string
 var token string
+
+type oracle struct {
+	message string
+	status byte
+}
 
 func init() {
 	flag.StringVar(&address, "address", defaultVaultAddr,
@@ -49,6 +59,14 @@ func init() {
 	flag.StringVar(&token, "token", "",
 		"The token to access Vault. "+
 			"Overrides the "+api.EnvVaultToken+" environment variable if set")
+}
+
+func (o oracle) String() string {
+	if o.status == StateCritical {
+		return fmt.Sprintf("Critical: " + o.message)
+	} else {
+		return fmt.Sprintf(o.message)
+	}
 }
 
 func VaultClientInit(address string) (*api.Client, error) {
@@ -186,31 +204,50 @@ func main() {
 			log.Fatal(err)
 		}
 		if sealStatus {
-			fmt.Println("Error: Vault sealed")
+			fmt.Print(oracle{
+				message: "Vault sealed",
+				status: StateCritical,
+			}, "\n")
 		} else {
-			fmt.Println("Vault unsealed")
+			fmt.Print(oracle{
+				message: "Vault unsealed",
+				status: StateOk,
+			}, "\n")
 		}
 	} else if policies != "" {
 		err := CheckVaultPolicies(
 			address, token, strings.Split(policies, ","))
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Print(oracle{
+				message: err.Error(),
+				status: StateCritical,
+			}, "\n")
 		} else {
-			fmt.Println("All the Vault Policies are available")
+			fmt.Print(oracle{
+				message: "All the Vault Policies are available",
+				status: StateOk,
+			}, "\n")
 		}
 	} else if readkey != "" {
 		secret, err := ReadVaultSecret(readkey, address, token)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Print(oracle{
+				message: err.Error(),
+				status: StateCritical,
+			}, "\n")
 		} else {
 			// export VAULT_ADDR="http://127.0.0.1:8200"
 			// export VAULT_TOKEN="..."
 			// $GOPATH/bin/hashicorp-vault-monitor -readkey secret/data/test/testkey
 			//   -> /v1/map[testkey:this-is-a-secret] -> "this-is-a-secret"
-			fmt.Printf("Found value: '%v'\n", secret)
+			fmt.Print(oracle{
+				message: "Found value: '" + secret + "'",
+				status: StateOk,
+			}, "\n")
 		}
 	} else {
-		fmt.Fprintln(os.Stderr, "Syntax error: missing -status or -policies flag")
+		fmt.Fprintln(os.Stderr,
+			"Syntax error: missing -readkey, -status, or -policies flag")
 		os.Exit(1)
 	}
 }
