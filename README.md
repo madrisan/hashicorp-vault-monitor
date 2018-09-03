@@ -1,5 +1,6 @@
 ![Release Status](https://img.shields.io/badge/status-beta-yellow.svg)
 [![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](https://spdx.org/licenses/MPL-2.0.html)
+[![Go Report Card](https://goreportcard.com/badge/github.com/madrisan/hashicorp-vault-monitor)](https://goreportcard.com/report/github.com/madrisan/hashicorp-vault-monitor)
 
 # Hashicorp Vault Monitor
 
@@ -69,6 +70,10 @@ $GOPATH/bin/hashicorp-vault-monitor \
     -address=http://127.0.0.1:8200 \
     -token="39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
     -policies="root,saltstack"
+$GOPATH/bin/hashicorp-vault-monitor \
+    -address=http://127.0.0.1:8200 \
+    -token="39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -readkey secret/data/test/testkey
 ```
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
@@ -82,6 +87,7 @@ export VAULT_TOKEN="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 
 $GOPATH/bin/hashicorp-vault-monitor -status
 $GOPATH/bin/hashicorp-vault-monitor -policies="root,saltstack"
+$GOPATH/bin/hashicorp-vault-monitor -readkey secret/data/test/testkey
 ```
 
 The *Root Token* can also be used to login to the Vault web interface at the
