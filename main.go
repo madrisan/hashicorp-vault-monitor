@@ -149,8 +149,7 @@ func GetRawField(data interface{}, field string) (string, error) {
 	}
 
 	if val == nil {
-		return "", errors.New(
-			fmt.Sprintf("Field '%s' not present in secret", field))
+		return "", fmt.Errorf("Field '%s' not present in secret", field)
 	}
 
 	return val.(string), nil
@@ -170,12 +169,10 @@ func ReadVaultSecret(keypath, address, token string) (string, error) {
 	path, key := filepath.Split(keypath)
 	secret, err := client.Logical().Read(path)
 	if err != nil {
-		return "", errors.New(
-			fmt.Sprintf("Error reading %s: %s", path, err))
+		return "", fmt.Errorf("Error reading %s: %s", path, err)
 	}
 	if secret == nil {
-		return "", errors.New(
-			fmt.Sprintf("No value found at %s", path))
+		return "", fmt.Errorf("No value found at %s", path)
 	}
 
 	// secret.Data:
@@ -185,7 +182,7 @@ func ReadVaultSecret(keypath, address, token string) (string, error) {
 		value, err := GetRawField(data, key)
 		return value, err
 	} else {
-		return "", errors.New(fmt.Sprintf("No data found at %s", path))
+		return "", fmt.Errorf("No data found at %s", path)
 	}
 }
 
