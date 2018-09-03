@@ -53,7 +53,7 @@ func init() {
 	flag.BoolVar(&status, "status", false,
 		"Returns the Vault status (sealed/unsealed)")
 	flag.StringVar(&policies, "policies", "",
-		"Comma-separated list of policies to be checked for existance")
+		"Comma-separated list of policies to be checked for existence")
 	flag.StringVar(&readkey, "readkey", "",
 		"Read a Vault secret")
 	flag.StringVar(&token, "token", "",
