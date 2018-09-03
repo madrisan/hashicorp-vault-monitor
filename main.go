@@ -21,7 +21,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/hashicorp/vault/api"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +31,7 @@ const (
 	StateOk byte = iota
 	StateWarning
 	StateCritical
+	StateUnknown
 )
 
 var client *api.Client // https://godoc.org/github.com/hashicorp/vault/api
@@ -62,7 +62,9 @@ func init() {
 }
 
 func (o oracle) String() string {
-	if o.status == StateCritical {
+	if o.status == StateOk {
+		return fmt.Sprintf("Ok: " + o.message)
+	} else if o.status == StateCritical {
 		return fmt.Sprintf("Critical: " + o.message)
 	} else {
 		return fmt.Sprintf(o.message)
@@ -80,18 +82,18 @@ func VaultClientInit(address string) (*api.Client, error) {
 	return client, nil
 }
 
-func CheckVaultSealStatus(address string) (bool, error) {
+func VaultIsUnsealed(address string) (bool, error) {
 	client, err := VaultClientInit(address)
 	if err != nil {
-		return true, err
+		return false, err
 	}
 
 	status, err := client.Sys().SealStatus()
 	if err != nil {
-		return true, err
+		return false, err
 	}
 
-	return status.Sealed, nil
+	return status.Sealed == false, nil
 }
 
 func Contains(items []string, item string) bool {
@@ -180,6 +182,7 @@ func ReadVaultSecret(keypath, address, token string) (string, error) {
 func main() {
 	var envAddress string
 	var envToken string
+	var result oracle
 
 	// Parse the environment variables
 	if v := os.Getenv(api.EnvVaultAddress); v != "" {
@@ -199,55 +202,54 @@ func main() {
 	flag.Parse()
 
 	if status {
-		sealStatus, err := CheckVaultSealStatus(address)
+		isUnsealed, err := VaultIsUnsealed(address)
 		if err != nil {
-			log.Fatal(err)
+			result = oracle{
+				message: err.Error(),
+				status: StateUnknown,
+			}
 		}
-		if sealStatus {
-			fmt.Print(oracle{
-				message: "Vault sealed",
-				status: StateCritical,
-			}, "\n")
+		if isUnsealed {
+			result = oracle{
+				message: "Vault is unsealed",
+			}
 		} else {
-			fmt.Print(oracle{
-				message: "Vault unsealed",
-				status: StateOk,
-			}, "\n")
+			result = oracle{
+				message: "Vault is sealed",
+				status: StateCritical,
+			}
 		}
 	} else if policies != "" {
 		err := CheckVaultPolicies(
 			address, token, strings.Split(policies, ","))
 		if err != nil {
-			fmt.Print(oracle{
+			result = oracle{
 				message: err.Error(),
 				status: StateCritical,
-			}, "\n")
+			}
 		} else {
-			fmt.Print(oracle{
+			result = oracle{
 				message: "All the Vault Policies are available",
-				status: StateOk,
-			}, "\n")
+			}
 		}
 	} else if readkey != "" {
 		secret, err := ReadVaultSecret(readkey, address, token)
 		if err != nil {
-			fmt.Print(oracle{
+			result = oracle{
 				message: err.Error(),
 				status: StateCritical,
-			}, "\n")
+			}
 		} else {
-			// export VAULT_ADDR="http://127.0.0.1:8200"
-			// export VAULT_TOKEN="..."
-			// $GOPATH/bin/hashicorp-vault-monitor -readkey secret/data/test/testkey
-			//   -> /v1/map[testkey:this-is-a-secret] -> "this-is-a-secret"
-			fmt.Print(oracle{
+			result = oracle{
 				message: "Found value: '" + secret + "'",
-				status: StateOk,
-			}, "\n")
+			}
 		}
 	} else {
 		fmt.Fprintln(os.Stderr,
 			"Syntax error: missing -readkey, -status, or -policies flag")
 		os.Exit(1)
 	}
+
+	fmt.Print(result, "\n")
+	os.Exit(int(result.status))
 }
