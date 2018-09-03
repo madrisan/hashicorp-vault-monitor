@@ -43,7 +43,7 @@ var token string
 
 type oracle struct {
 	message string
-	status byte
+	status  byte
 }
 
 func init() {
@@ -213,7 +213,7 @@ func main() {
 		if err != nil {
 			result = oracle{
 				message: err.Error(),
-				status: StateUnknown,
+				status:  StateUnknown,
 			}
 		}
 		if isUnsealed {
@@ -223,7 +223,7 @@ func main() {
 		} else {
 			result = oracle{
 				message: "Vault is sealed",
-				status: StateCritical,
+				status:  StateCritical,
 			}
 		}
 	} else if policies != "" {
@@ -246,7 +246,7 @@ func main() {
 		if err != nil {
 			result = oracle{
 				message: err.Error(),
-				status: StateCritical,
+				status:  StateCritical,
 			}
 		} else {
 			result = oracle{
