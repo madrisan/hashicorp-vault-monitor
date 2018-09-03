@@ -181,9 +181,9 @@ func ReadVaultSecret(keypath, address, token string) (string, error) {
 	if data, ok := secret.Data["data"]; ok && data != nil {
 		value, err := GetRawField(data, key)
 		return value, err
-	} else {
-		return "", fmt.Errorf("No data found at %s", path)
 	}
+
+	return "", fmt.Errorf("No data found at %s", path)
 }
 
 func main() {
