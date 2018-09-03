@@ -62,13 +62,20 @@ func init() {
 }
 
 func (o oracle) String() string {
-	if o.status == StateOk {
-		return fmt.Sprintf("Ok: " + o.message)
-	} else if o.status == StateCritical {
-		return fmt.Sprintf("Critical: " + o.message)
-	} else {
-		return fmt.Sprintf(o.message)
+	var status string
+
+	switch o.status {
+	case StateOk:
+		status = "Ok"
+	case StateWarning:
+		status = "Warning"
+	case StateCritical:
+		status = "Critical"
+	default:
+		status = "Unknown"
 	}
+
+	return fmt.Sprintf(status + ": " + o.message)
 }
 
 func VaultClientInit(address string) (*api.Client, error) {
@@ -105,10 +112,12 @@ func Contains(items []string, item string) bool {
 	return false
 }
 
-func CheckVaultPolicies(address, token string, policies []string) error {
+func CheckVaultPolicies(
+	address, token string, policies []string) ([]string, error) {
+
 	client, err := VaultClientInit(address)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if token != "" {
@@ -117,16 +126,17 @@ func CheckVaultPolicies(address, token string, policies []string) error {
 
 	activePolicies, err := client.Sys().ListPolicies()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for _, policy := range policies {
 		if !Contains(activePolicies, policy) {
-			return errors.New("No such Vault Policy: " + policy)
+			return activePolicies,
+				errors.New("No such Vault Policy: " + policy)
 		}
 	}
 
-	return nil
+	return activePolicies, nil
 }
 
 func GetRawField(data interface{}, field string) (string, error) {
@@ -220,12 +230,14 @@ func main() {
 			}
 		}
 	} else if policies != "" {
-		err := CheckVaultPolicies(
+		policies, err := CheckVaultPolicies(
 			address, token, strings.Split(policies, ","))
 		if err != nil {
-			result = oracle{
-				message: err.Error(),
-				status: StateCritical,
+			result.message = err.Error()
+			if policies != nil {
+				result.status = StateCritical
+			} else {
+				result.status = StateUnknown
 			}
 		} else {
 			result = oracle{
