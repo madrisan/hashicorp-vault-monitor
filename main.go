@@ -132,7 +132,7 @@ func CheckVaultPolicies(
 	for _, policy := range policies {
 		if !Contains(activePolicies, policy) {
 			return activePolicies,
-				errors.New("No such Vault Policy: " + policy)
+				errors.New("no such Vault policy: " + policy)
 		}
 	}
 
@@ -149,7 +149,7 @@ func GetRawField(data interface{}, field string) (string, error) {
 	}
 
 	if val == nil {
-		return "", fmt.Errorf("Field '%s' not present in secret", field)
+		return "", fmt.Errorf("field '%s' not present in secret", field)
 	}
 
 	return val.(string), nil
@@ -169,10 +169,10 @@ func ReadVaultSecret(keypath, address, token string) (string, error) {
 	path, key := filepath.Split(keypath)
 	secret, err := client.Logical().Read(path)
 	if err != nil {
-		return "", fmt.Errorf("Error reading %s: %s", path, err)
+		return "", fmt.Errorf("error reading %s: %s", path, err)
 	}
 	if secret == nil {
-		return "", fmt.Errorf("No value found at %s", path)
+		return "", fmt.Errorf("no value found at %s", path)
 	}
 
 	// secret.Data:
@@ -183,7 +183,7 @@ func ReadVaultSecret(keypath, address, token string) (string, error) {
 		return value, err
 	}
 
-	return "", fmt.Errorf("No data found at %s", path)
+	return "", fmt.Errorf("no data found at %s", path)
 }
 
 func main() {
@@ -238,7 +238,7 @@ func main() {
 			}
 		} else {
 			result = oracle{
-				message: "All the Vault Policies are available",
+				message: "all the Vault policies are available",
 			}
 		}
 	} else if readkey != "" {
@@ -250,7 +250,7 @@ func main() {
 			}
 		} else {
 			result = oracle{
-				message: "Found value: '" + secret + "'",
+				message: "found value: '" + secret + "'",
 			}
 		}
 	} else {
