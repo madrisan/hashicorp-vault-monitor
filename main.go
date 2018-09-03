@@ -20,10 +20,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/hashicorp/vault/api"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/hashicorp/vault/api"
 )
 
 const defaultVaultAddr = "https://127.0.0.1:8200"
