@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/madrisan/hashicorp-vault-monitor/version"
 	"github.com/hashicorp/vault/api"
 )
 
@@ -36,11 +37,15 @@ const (
 )
 
 var client *api.Client // https://godoc.org/github.com/hashicorp/vault/api
-var address string
-var status bool
-var policies string
-var readkey string
-var token string
+// Command line switches
+var (
+	address string
+	infos bool
+	policies string
+	readkey string
+	status bool
+	token string
+)
 
 type oracle struct {
 	message string
@@ -51,6 +56,8 @@ func init() {
 	flag.StringVar(&address, "address", defaultVaultAddr,
 		"The address of the Vault server. "+
 			"Overrides the "+api.EnvVaultAddress+" environment variable if set")
+	flag.BoolVar(&infos, "version", false,
+		"Print the tool version number and exit")
 	flag.BoolVar(&status, "status", false,
 		"Returns the Vault status (sealed/unsealed)")
 	flag.StringVar(&policies, "policies", "",
@@ -187,6 +194,11 @@ func ReadVaultSecret(keypath, address, token string) (string, error) {
 	return "", fmt.Errorf("no data found at %s", path)
 }
 
+// Version returns the semantic version (see http://semver.org) of the tool.
+func Version() string {
+	return version.Number
+}
+
 func main() {
 	var envAddress string
 	var envToken string
@@ -254,6 +266,9 @@ func main() {
 				message: "found value: '" + secret + "'",
 			}
 		}
+	} else if infos {
+	        fmt.Println("HashiCorp Vault Monitor v"+ version.Number)
+		os.Exit(0)
 	} else {
 		fmt.Fprintln(os.Stderr,
 			"Syntax error: missing -readkey, -status, or -policies flag")
