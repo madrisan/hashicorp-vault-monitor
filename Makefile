@@ -1,9 +1,10 @@
 EXTERNAL_TOOLS=\
+	github.com/hashicorp/vault/api \
 	github.com/mitchellh/gox
 
 CGO_ENABLED=0
 
-default: bin
+default: dev
 
 # bin generates the releasable binaries for HashiCorp Vault Monitor
 bin:
