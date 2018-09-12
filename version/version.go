@@ -1,5 +1,3 @@
-package version
-
 /*
   Copyright 2018 Davide Madrisan <davide.madrisan@gmail.com>
 
@@ -16,5 +14,68 @@ package version
   limitations under the License.
 */
 
-// Number contains the semantic version of this monitoring tool.
-const Number = "0.1"
+package version
+
+import (
+	"bytes"
+	"fmt"
+)
+
+var (
+	// The git commit that was compiled. This will be filled in by the compiler.
+	GitCommit   string
+
+	Version           = "unknown"
+	VersionPrerelease = "unknown"
+)
+
+// VersionInfo
+type VersionInfo struct {
+	Revision          string
+	Version           string
+	VersionPrerelease string
+}
+
+func GetVersion() *VersionInfo {
+	ver := Version
+	rel := VersionPrerelease
+
+	return &VersionInfo{
+		Revision:          GitCommit,
+		Version:           ver,
+		VersionPrerelease: rel,
+	}
+}
+
+func (c *VersionInfo) VersionNumber() string {
+	if Version == "unknown" && VersionPrerelease == "unknown" {
+		return "(version unknown)"
+	}
+
+	version := fmt.Sprintf("%s", c.Version)
+
+	if c.VersionPrerelease != "" {
+		version = fmt.Sprintf("%s-%s", version, c.VersionPrerelease)
+	}
+
+	return version
+}
+
+func (c *VersionInfo) FullVersionNumber(rev bool) string {
+        var versionString bytes.Buffer
+
+        if Version == "unknown" && VersionPrerelease == "unknown" {
+                return "HashiCorp Vault Monitor (version unknown)"
+        }
+
+        fmt.Fprintf(&versionString, "HashiCorp Vault Monitor v%s", c.Version)
+        if c.VersionPrerelease != "" {
+                fmt.Fprintf(&versionString, "-%s", c.VersionPrerelease)
+        }
+
+        if rev && c.Revision != "" {
+                fmt.Fprintf(&versionString, " (%s)", c.Revision)
+        }
+
+        return versionString.String()
+}

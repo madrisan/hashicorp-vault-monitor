@@ -37,8 +37,8 @@ const (
 )
 
 var client *api.Client // https://godoc.org/github.com/hashicorp/vault/api
-// Command line switches
 var (
+	// Command line switches.
 	address string
 	infos bool
 	policies string
@@ -196,7 +196,8 @@ func ReadVaultSecret(keypath, address, token string) (string, error) {
 
 // Version returns the semantic version (see http://semver.org) of the tool.
 func Version() string {
-	return version.Number
+	versionInfo := version.GetVersion()
+	return versionInfo.FullVersionNumber(true)
 }
 
 func main() {
@@ -267,7 +268,7 @@ func main() {
 			}
 		}
 	} else if infos {
-	        fmt.Println("HashiCorp Vault Monitor v"+ version.Number)
+	        fmt.Println(Version())
 		os.Exit(0)
 	} else {
 		fmt.Fprintln(os.Stderr,
