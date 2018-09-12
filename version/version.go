@@ -23,7 +23,7 @@ import (
 
 var (
 	// The git commit that was compiled. This will be filled in by the compiler.
-	GitCommit   string
+	GitCommit string
 
 	Version           = "unknown"
 	VersionPrerelease = "unknown"
@@ -62,20 +62,20 @@ func (c *VersionInfo) VersionNumber() string {
 }
 
 func (c *VersionInfo) FullVersionNumber(rev bool) string {
-        var versionString bytes.Buffer
+	var versionString bytes.Buffer
 
-        if Version == "unknown" && VersionPrerelease == "unknown" {
-                return "HashiCorp Vault Monitor (version unknown)"
-        }
+	if Version == "unknown" && VersionPrerelease == "unknown" {
+		return "HashiCorp Vault Monitor (version unknown)"
+	}
 
-        fmt.Fprintf(&versionString, "HashiCorp Vault Monitor v%s", c.Version)
-        if c.VersionPrerelease != "" {
-                fmt.Fprintf(&versionString, "-%s", c.VersionPrerelease)
-        }
+	fmt.Fprintf(&versionString, "HashiCorp Vault Monitor v%s", c.Version)
+	if c.VersionPrerelease != "" {
+		fmt.Fprintf(&versionString, "-%s", c.VersionPrerelease)
+	}
 
-        if rev && c.Revision != "" {
-                fmt.Fprintf(&versionString, " (%s)", c.Revision)
-        }
+	if rev && c.Revision != "" {
+		fmt.Fprintf(&versionString, " (%s)", c.Revision)
+	}
 
-        return versionString.String()
+	return versionString.String()
 }
