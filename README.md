@@ -9,12 +9,13 @@
 ## How to build the source code
 
 ```
-export GOPATH="$HOME/Development/go"
-
-go get -u github.com/hashicorp/vault/api
+[ "$GOPATH" ] || export GOPATH="$HOME/go"
 go get -u github.com/madrisan/hashicorp-vault-monitor
-go install github.com/madrisan/hashicorp-vault-monitor
+
+make -C $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor bootstrap dev
+$GOPATH/bin/hashicorp-vault-monitor -version
 ```
+
 ## How to test the monitoring binary
 
 If you do not have a running Vault server, you can run a dockerized version of

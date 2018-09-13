@@ -24,8 +24,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/madrisan/hashicorp-vault-monitor/version"
 	"github.com/hashicorp/vault/api"
+	"github.com/madrisan/hashicorp-vault-monitor/version"
 )
 
 const defaultVaultAddr = "https://127.0.0.1:8200"
