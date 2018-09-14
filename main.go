@@ -28,7 +28,7 @@ import (
 	"github.com/madrisan/hashicorp-vault-monitor/version"
 )
 
-const defaultVaultAddr = "https://127.0.0.1:8200"
+const DefaultVaultAddr = "https://127.0.0.1:8200"
 const (
 	StateOk byte = iota
 	StateWarning
@@ -53,7 +53,7 @@ type oracle struct {
 }
 
 func init() {
-	flag.StringVar(&address, "address", defaultVaultAddr,
+	flag.StringVar(&address, "address", DefaultVaultAddr,
 		"The address of the Vault server. "+
 			"Overrides the "+api.EnvVaultAddress+" environment variable if set")
 	flag.BoolVar(&infos, "version", false,
@@ -86,7 +86,7 @@ func (o oracle) String() string {
 	return fmt.Sprintf(status + ": " + o.message)
 }
 
-func VaultClientInit(address string) (*api.Client, error) {
+func vaultClientInit(address string) (*api.Client, error) {
 	client, err := api.NewClient(&api.Config{
 		Address: address,
 	})
@@ -98,7 +98,7 @@ func VaultClientInit(address string) (*api.Client, error) {
 }
 
 func VaultIsUnsealed(address string) (bool, error) {
-	client, err := VaultClientInit(address)
+	client, err := vaultClientInit(address)
 	if err != nil {
 		return false, err
 	}
@@ -111,7 +111,7 @@ func VaultIsUnsealed(address string) (bool, error) {
 	return status.Sealed == false, nil
 }
 
-func Contains(items []string, item string) bool {
+func contains(items []string, item string) bool {
 	for _, i := range items {
 		if i == item {
 			return true
@@ -123,7 +123,7 @@ func Contains(items []string, item string) bool {
 func CheckVaultPolicies(
 	address, token string, policies []string) ([]string, error) {
 
-	client, err := VaultClientInit(address)
+	client, err := vaultClientInit(address)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func CheckVaultPolicies(
 	}
 
 	for _, policy := range policies {
-		if !Contains(activePolicies, policy) {
+		if !contains(activePolicies, policy) {
 			return activePolicies,
 				errors.New("no such Vault policy: " + policy)
 		}
@@ -147,7 +147,7 @@ func CheckVaultPolicies(
 	return activePolicies, nil
 }
 
-func GetRawField(data interface{}, field string) (string, error) {
+func getRawField(data interface{}, field string) (string, error) {
 	var val interface{}
 	switch data.(type) {
 	case *api.Secret:
@@ -164,7 +164,7 @@ func GetRawField(data interface{}, field string) (string, error) {
 }
 
 func ReadVaultSecret(keypath, address, token string) (string, error) {
-	client, err := VaultClientInit(address)
+	client, err := vaultClientInit(address)
 	if err != nil {
 		return "", err
 	}
@@ -187,7 +187,7 @@ func ReadVaultSecret(keypath, address, token string) (string, error) {
 	// - data -> map[akey:this-is-a-test]
 	// - metadata -> map[created_time:2018-08-31T15:36:31.894655728Z deletion_time: destroyed:false version:3]
 	if data, ok := secret.Data["data"]; ok && data != nil {
-		value, err := GetRawField(data, key)
+		value, err := getRawField(data, key)
 		return value, err
 	}
 
