@@ -18,17 +18,16 @@ package main // import "github.com/madrisan/hashicorp-vault-monitor"
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/hashicorp/vault/api"
+	"github.com/madrisan/hashicorp-vault-monitor/command"
 	"github.com/madrisan/hashicorp-vault-monitor/version"
 )
 
-const DefaultVaultAddr = "https://127.0.0.1:8200"
 const (
 	StateOk byte = iota
 	StateWarning
@@ -37,36 +36,10 @@ const (
 )
 
 var client *api.Client // https://godoc.org/github.com/hashicorp/vault/api
-var (
-	// Command line switches.
-	address string
-	infos bool
-	policies string
-	readkey string
-	status bool
-	token string
-)
 
 type oracle struct {
 	message string
 	status  byte
-}
-
-func init() {
-	flag.StringVar(&address, "address", DefaultVaultAddr,
-		"The address of the Vault server. "+
-			"Overrides the "+api.EnvVaultAddress+" environment variable if set")
-	flag.BoolVar(&infos, "version", false,
-		"Print the tool version number and exit")
-	flag.BoolVar(&status, "status", false,
-		"Returns the Vault status (sealed/unsealed)")
-	flag.StringVar(&policies, "policies", "",
-		"Comma-separated list of policies to be checked for existence")
-	flag.StringVar(&readkey, "readkey", "",
-		"Read a Vault secret")
-	flag.StringVar(&token, "token", "",
-		"The token to access Vault. "+
-			"Overrides the "+api.EnvVaultToken+" environment variable if set")
 }
 
 func (o oracle) String() string {
@@ -201,29 +174,10 @@ func Version() string {
 }
 
 func main() {
-	var envAddress string
-	var envToken string
 	var result oracle
-
-	// Parse the environment variables
-	if v := os.Getenv(api.EnvVaultAddress); v != "" {
-		envAddress = v
-	}
-	if v := os.Getenv(api.EnvVaultToken); v != "" {
-		envToken = v
-	}
-
-	if envAddress != "" && address != "" {
-		address = envAddress
-	}
-	if envToken != "" && token != "" {
-		token = envToken
-	}
-
-	flag.Parse()
-
-	if status {
-		isUnsealed, err := VaultIsUnsealed(address)
+	opt := command.Run()
+	if opt.Status {
+		isUnsealed, err := VaultIsUnsealed(opt.Address)
 		if err != nil {
 			result = oracle{
 				message: err.Error(),
@@ -240,9 +194,9 @@ func main() {
 				status:  StateCritical,
 			}
 		}
-	} else if policies != "" {
+	} else if opt.Policies != "" {
 		policies, err := CheckVaultPolicies(
-			address, token, strings.Split(policies, ","))
+			opt.Address, opt.Token, strings.Split(opt.Policies, ","))
 		if err != nil {
 			result.message = err.Error()
 			if policies != nil {
@@ -255,8 +209,8 @@ func main() {
 				message: "all the Vault policies are available",
 			}
 		}
-	} else if readkey != "" {
-		secret, err := ReadVaultSecret(readkey, address, token)
+	} else if opt.ReadKey != "" {
+		secret, err := ReadVaultSecret(opt.ReadKey, opt.Address, opt.Token)
 		if err != nil {
 			result = oracle{
 				message: err.Error(),
@@ -267,7 +221,7 @@ func main() {
 				message: "found value: '" + secret + "'",
 			}
 		}
-	} else if infos {
+	} else if opt.Infos {
 	        fmt.Println(Version())
 		os.Exit(0)
 	} else {
