@@ -17,14 +17,12 @@
 package main // import "github.com/madrisan/hashicorp-vault-monitor"
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/hashicorp/vault/api"
 	"github.com/madrisan/hashicorp-vault-monitor/command"
+	"github.com/madrisan/hashicorp-vault-monitor/vault"
 	"github.com/madrisan/hashicorp-vault-monitor/version"
 )
 
@@ -34,8 +32,6 @@ const (
 	StateCritical
 	StateUnknown
 )
-
-var client *api.Client // https://godoc.org/github.com/hashicorp/vault/api
 
 type oracle struct {
 	message string
@@ -59,114 +55,6 @@ func (o oracle) String() string {
 	return fmt.Sprintf(status + ": " + o.message)
 }
 
-func vaultClientInit(address string) (*api.Client, error) {
-	client, err := api.NewClient(&api.Config{
-		Address: address,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return client, nil
-}
-
-func VaultIsUnsealed(address string) (bool, error) {
-	client, err := vaultClientInit(address)
-	if err != nil {
-		return false, err
-	}
-
-	status, err := client.Sys().SealStatus()
-	if err != nil {
-		return false, err
-	}
-
-	return status.Sealed == false, nil
-}
-
-func contains(items []string, item string) bool {
-	for _, i := range items {
-		if i == item {
-			return true
-		}
-	}
-	return false
-}
-
-func CheckVaultPolicies(
-	address, token string, policies []string) ([]string, error) {
-
-	client, err := vaultClientInit(address)
-	if err != nil {
-		return nil, err
-	}
-
-	if token != "" {
-		client.SetToken(token)
-	}
-
-	activePolicies, err := client.Sys().ListPolicies()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, policy := range policies {
-		if !contains(activePolicies, policy) {
-			return activePolicies,
-				errors.New("no such Vault policy: " + policy)
-		}
-	}
-
-	return activePolicies, nil
-}
-
-func getRawField(data interface{}, field string) (string, error) {
-	var val interface{}
-	switch data.(type) {
-	case *api.Secret:
-		val = data.(*api.Secret).Data[field]
-	case map[string]interface{}:
-		val = data.(map[string]interface{})[field]
-	}
-
-	if val == nil {
-		return "", fmt.Errorf("field '%s' not present in secret", field)
-	}
-
-	return val.(string), nil
-}
-
-func ReadVaultSecret(keypath, address, token string) (string, error) {
-	client, err := vaultClientInit(address)
-	if err != nil {
-		return "", err
-	}
-
-	if token != "" {
-		client.SetToken(token)
-	}
-
-	// see: https://godoc.org/github.com/hashicorp/vault/api#Secret
-	path, key := filepath.Split(keypath)
-	secret, err := client.Logical().Read(path)
-	if err != nil {
-		return "", fmt.Errorf("error reading %s: %s", path, err)
-	}
-	if secret == nil {
-		return "", fmt.Errorf("no value found at %s", path)
-	}
-
-	// secret.Data:
-	// - data -> map[akey:this-is-a-test]
-	// - metadata -> map[created_time:2018-08-31T15:36:31.894655728Z deletion_time: destroyed:false version:3]
-	if data, ok := secret.Data["data"]; ok && data != nil {
-		value, err := getRawField(data, key)
-		return value, err
-	}
-
-	return "", fmt.Errorf("no data found at %s", path)
-}
-
 // Version returns the semantic version (see http://semver.org) of the tool.
 func Version() string {
 	versionInfo := version.GetVersion()
@@ -177,14 +65,14 @@ func main() {
 	var result oracle
 	opt := command.Run()
 	if opt.Status {
-		isUnsealed, err := VaultIsUnsealed(opt.Address)
+		unsealed, err := vault.IsUnsealed(opt.Address)
 		if err != nil {
 			result = oracle{
 				message: err.Error(),
 				status:  StateUnknown,
 			}
 		}
-		if isUnsealed {
+		if unsealed {
 			result = oracle{
 				message: "Vault is unsealed",
 			}
@@ -195,7 +83,7 @@ func main() {
 			}
 		}
 	} else if opt.Policies != "" {
-		policies, err := CheckVaultPolicies(
+		policies, err := vault.CheckPolicies(
 			opt.Address, opt.Token, strings.Split(opt.Policies, ","))
 		if err != nil {
 			result.message = err.Error()
@@ -210,7 +98,7 @@ func main() {
 			}
 		}
 	} else if opt.ReadKey != "" {
-		secret, err := ReadVaultSecret(opt.ReadKey, opt.Address, opt.Token)
+		secret, err := vault.ReadSecret(opt.ReadKey, opt.Address, opt.Token)
 		if err != nil {
 			result = oracle{
 				message: err.Error(),

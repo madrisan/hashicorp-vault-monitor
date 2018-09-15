@@ -23,8 +23,6 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
-const defaultVaultAddr = "https://127.0.0.1:8200"
-
 // Command line switches
 type RunOptions struct {
 	Address  string
@@ -35,14 +33,13 @@ type RunOptions struct {
 	Token    string
 }
 
-func Run() *RunOptions {
-	return runCustom(nil)
-}
+var runOpts *RunOptions
 
-func runCustom(runOpts *RunOptions) *RunOptions {
-	if runOpts == nil {
-		runOpts = &RunOptions{}
-	}
+func init() {
+	const (
+		defaultVaultAddr = "https://127.0.0.1:8200"
+	)
+	runOpts = &RunOptions{}
 
 	var envAddress string
 	var envToken string
@@ -76,8 +73,9 @@ func runCustom(runOpts *RunOptions) *RunOptions {
 	flag.StringVar(&runOpts.Token, "token", "",
 		"The token to access Vault. "+
 			"Overrides the "+api.EnvVaultToken+" environment variable if set")
+}
 
+func Run() *RunOptions {
 	flag.Parse()
-
 	return runOpts
 }
