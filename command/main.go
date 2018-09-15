@@ -37,7 +37,16 @@ var runOpts *RunOptions
 
 func init() {
 	const (
-		defaultVaultAddr = "https://127.0.0.1:8200"
+		addressDefault = "https://127.0.0.1:8200"
+		addressDescr   = "The address of the Vault server. " +
+			"Overrides the " + api.EnvVaultAddress + " environment variable if set"
+
+		policiesDescr = "Comma-separated list of policies to be checked for existence"
+		readKeyDesc   = "Read a Vault secret"
+		statusDescr   = "Returns the Vault status (sealed/unsealed)"
+		tokenDescr    = "The token to access Vault. " +
+			"Overrides the " + api.EnvVaultToken + " environment variable if set"
+		versionDesc   = "Print the tool version number and exit"
 	)
 	runOpts = &RunOptions{}
 
@@ -59,20 +68,14 @@ func init() {
 		runOpts.Token = envToken
 	}
 
-	flag.StringVar(&runOpts.Address, "address", defaultVaultAddr,
-		"The address of the Vault server. "+
-			"Overrides the "+api.EnvVaultAddress+" environment variable if set")
-	flag.BoolVar(&runOpts.Infos, "version", false,
-		"Print the tool version number and exit")
-	flag.BoolVar(&runOpts.Status, "status", false,
-		"Returns the Vault status (sealed/unsealed)")
-	flag.StringVar(&runOpts.Policies, "policies", "",
-		"Comma-separated list of policies to be checked for existence")
-	flag.StringVar(&runOpts.ReadKey, "readkey", "",
-		"Read a Vault secret")
-	flag.StringVar(&runOpts.Token, "token", "",
-		"The token to access Vault. "+
-			"Overrides the "+api.EnvVaultToken+" environment variable if set")
+	flag.StringVar(&runOpts.Address, "address", addressDefault, addressDescr)
+
+	flag.BoolVar(&runOpts.Infos, "version", false, versionDesc)
+	flag.BoolVar(&runOpts.Status, "status", false, statusDescr)
+
+	flag.StringVar(&runOpts.Policies, "policies", "", policiesDescr)
+	flag.StringVar(&runOpts.ReadKey, "readkey", "", readKeyDesc)
+	flag.StringVar(&runOpts.Token, "token", "", tokenDescr)
 }
 
 func Run() *RunOptions {
