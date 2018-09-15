@@ -17,68 +17,79 @@
 package command
 
 import (
-	"flag"
+	"fmt"
 	"os"
 
 	"github.com/hashicorp/vault/api"
+	"github.com/madrisan/hashicorp-vault-monitor/version"
+	"github.com/mitchellh/cli"
 )
 
-// Command line switches
-type RunOptions struct {
-	Address  string
-	Infos    bool
-	Policies string
-	ReadKey  string
-	Status   bool
-	Token    string
+const (
+	addressDefault = "https://127.0.0.1:8200"
+	addressDescr   = "The address of the Vault server. " +
+		"Overrides the " + api.EnvVaultAddress + " environment variable if set"
+
+	tokenDefault = ""
+	tokenDescr   = "The token to access Vault. " +
+		"Overrides the " + api.EnvVaultToken + " environment variable if set"
+)
+
+// Version returns the semantic version (see http://semver.org) of the tool.
+func Version() string {
+	versionInfo := version.GetVersion()
+	return versionInfo.VersionNumber()
 }
 
-var runOpts *RunOptions
-
-func init() {
-	const (
-		addressDefault = "https://127.0.0.1:8200"
-		addressDescr   = "The address of the Vault server. " +
-			"Overrides the " + api.EnvVaultAddress + " environment variable if set"
-
-		policiesDescr = "Comma-separated list of policies to be checked for existence"
-		readKeyDesc   = "Read a Vault secret"
-		statusDescr   = "Returns the Vault status (sealed/unsealed)"
-		tokenDescr    = "The token to access Vault. " +
-			"Overrides the " + api.EnvVaultToken + " environment variable if set"
-		versionDesc   = "Print the tool version number and exit"
-	)
-	runOpts = &RunOptions{}
-
-	var envAddress string
-	var envToken string
-
-	// Parses the environment variables
-	if v := os.Getenv(api.EnvVaultAddress); v != "" {
-		envAddress = v
-	}
-	if v := os.Getenv(api.EnvVaultToken); v != "" {
-		envToken = v
+func Run(args []string) int {
+	ui := &cli.BasicUi{
+		Reader:      os.Stdin,
+		Writer:      os.Stdout,
+		ErrorWriter: os.Stderr,
 	}
 
-	if envAddress != "" && runOpts.Address != "" {
-		runOpts.Address = envAddress
+	c := cli.NewCLI("hashicorp-vault-monitor", Version())
+	c.Args = args
+
+	c.Commands = map[string]cli.CommandFactory{
+		"policies": func() (cli.Command, error) {
+			return &PoliciesCommand{
+				Ui: &cli.ColoredUi{
+					Ui:          ui,
+					ErrorColor:  cli.UiColorRed,
+					OutputColor: cli.UiColorGreen,
+					WarnColor:   cli.UiColorYellow,
+				},
+			}, nil
+		},
+		"readkey": func() (cli.Command, error) {
+			return &ReadKeyCommand{
+				Ui: &cli.ColoredUi{
+					Ui:          ui,
+					ErrorColor:  cli.UiColorRed,
+					OutputColor: cli.UiColorGreen,
+					WarnColor:   cli.UiColorYellow,
+				},
+			}, nil
+		},
+		"status": func() (cli.Command, error) {
+			return &StatusCommand{
+				Ui: &cli.ColoredUi{
+					Ui:          ui,
+					ErrorColor:  cli.UiColorRed,
+					OutputColor: cli.UiColorGreen,
+					WarnColor:   cli.UiColorYellow,
+				},
+			}, nil
+		},
 	}
-	if envToken != "" && runOpts.Token != "" {
-		runOpts.Token = envToken
+
+	exitStatus, err := c.Run()
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error executing CLI: %s\n", err.Error())
+		return 1
 	}
 
-	flag.StringVar(&runOpts.Address, "address", addressDefault, addressDescr)
-
-	flag.BoolVar(&runOpts.Infos, "version", false, versionDesc)
-	flag.BoolVar(&runOpts.Status, "status", false, statusDescr)
-
-	flag.StringVar(&runOpts.Policies, "policies", "", policiesDescr)
-	flag.StringVar(&runOpts.ReadKey, "readkey", "", readKeyDesc)
-	flag.StringVar(&runOpts.Token, "token", "", tokenDescr)
-}
-
-func Run() *RunOptions {
-	flag.Parse()
-	return runOpts
+	return exitStatus
 }

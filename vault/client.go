@@ -22,6 +22,14 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
+// ClientInit returs a new Vault client for the given configuration.
+//
+// If the configuration is nil, Vault will use configuration from
+// api.DefaultConfig(), which is the recommended starting configuration.
+//
+// If the environment variable `VAULT_TOKEN` is present, the token will be
+// automatically added to the client. Otherwise, you must manually call
+// `api.SetToken()`.
 func ClientInit(address string) (*api.Client, error) {
 	client, err := api.NewClient(&api.Config{
 		Address: address,

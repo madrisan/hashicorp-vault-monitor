@@ -1,5 +1,6 @@
 EXTERNAL_TOOLS=\
 	github.com/hashicorp/vault/api \
+	github.com/mitchellh/cli \
 	github.com/mitchellh/gox
 
 CGO_ENABLED=0
