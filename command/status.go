@@ -26,6 +26,7 @@ import (
 	"github.com/mitchellh/cli"
 )
 
+// StatusCommand is a CLI Command that holds the attributes of the command `status`.
 type StatusCommand struct {
 	Address string
 	Ui      cli.Ui

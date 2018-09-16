@@ -31,6 +31,7 @@ const (
 	readKeyCommandDescr = "Read a Vault secret"
 )
 
+// ReadKeyCommand is a CLI Command that holds the attributes of the command `readkey`.
 type ReadKeyCommand struct {
 	Address string
 	Token   string

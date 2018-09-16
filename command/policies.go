@@ -30,6 +30,7 @@ const (
 	policiesDescr = "Comma-separated list of policies to be checked for existence"
 )
 
+// PoliciesCommand is a CLI Command that holds the attributes of the command `policies`.
 type PoliciesCommand struct {
 	Address  string
 	Token    string
