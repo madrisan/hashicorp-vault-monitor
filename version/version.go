@@ -22,20 +22,22 @@ import (
 )
 
 var (
-	// The git commit that was compiled. This will be filled in by the compiler.
+	// GitCommit contains the git commit that was compiled.
+	// This will be filled in by the compiler.
 	GitCommit string
 
 	Version           = "unknown"
 	VersionPrerelease = "unknown"
 )
 
-// VersionInfo
+// VersionInfo contains the HashiCorp Vault Monitor version informations.
 type VersionInfo struct {
 	Revision          string
 	Version           string
 	VersionPrerelease string
 }
 
+// GetVersion returns the VersionInfo structure.
 func GetVersion() *VersionInfo {
 	ver := Version
 	rel := VersionPrerelease
@@ -47,6 +49,7 @@ func GetVersion() *VersionInfo {
 	}
 }
 
+// VersionNumber returns the current release version of HashiCorp Vault Monitor.
 func (c *VersionInfo) VersionNumber() string {
 	if Version == "unknown" && VersionPrerelease == "unknown" {
 		return "(version unknown)"
@@ -61,6 +64,7 @@ func (c *VersionInfo) VersionNumber() string {
 	return version
 }
 
+// FullVersionNumber returns the full version informations of HashiCorp Vault Monitor.
 func (c *VersionInfo) FullVersionNumber(rev bool) string {
 	var versionString bytes.Buffer
 

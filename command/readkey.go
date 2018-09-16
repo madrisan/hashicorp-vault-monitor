@@ -38,10 +38,12 @@ type ReadKeyCommand struct {
 	Ui      cli.Ui
 }
 
+// Synopsis returns a short synopsis of the `readkey` command.
 func (c *ReadKeyCommand) Synopsis() string {
 	return "Try to read a secret stored in Vault"
 }
 
+// Help returns a long-form help text of the `readkey` command.
 func (c *ReadKeyCommand) Help() string {
 	helpText := `
 Usage: hashicorp-vault-monitor readkey [options]
@@ -64,6 +66,7 @@ Usage: hashicorp-vault-monitor readkey [options]
 	return strings.TrimSpace(helpText)
 }
 
+// Run executes the `readkey` command with the given CLI instance and command-line arguments.
 func (c *ReadKeyCommand) Run(args []string) int {
 	vaultConfig := api.DefaultConfig()
 	if vaultConfig == nil {

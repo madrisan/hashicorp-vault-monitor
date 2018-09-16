@@ -46,10 +46,12 @@ func contains(items []string, item string) bool {
 	return false
 }
 
+// Synopsis returns a short synopsis of the `policies` command.
 func (c *PoliciesCommand) Synopsis() string {
 	return "Check the active policies of a Vault server"
 }
 
+// Help returns a long-form help text of the `policies` command.
 func (c *PoliciesCommand) Help() string {
 	helpText := `
 Usage: hashicorp-vault-monitor policies [options]
@@ -72,6 +74,7 @@ Usage: hashicorp-vault-monitor policies [options]
 	return strings.TrimSpace(helpText)
 }
 
+// Run executes the `policies` command with the given CLI instance and command-line arguments.
 func (c *PoliciesCommand) Run(args []string) int {
 	vaultConfig := api.DefaultConfig()
 	if vaultConfig == nil {

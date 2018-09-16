@@ -41,6 +41,7 @@ func Version() string {
 	return versionInfo.VersionNumber()
 }
 
+// Run initializes a CLI instance and its command state engine.
 func Run(args []string) int {
 	ui := &cli.BasicUi{
 		Reader:      os.Stdin,

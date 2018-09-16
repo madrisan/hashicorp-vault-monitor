@@ -31,10 +31,12 @@ type StatusCommand struct {
 	Ui      cli.Ui
 }
 
+// Synopsis returns a short synopsis of the `status` command.
 func (c *StatusCommand) Synopsis() string {
 	return "Returns the Vault status (sealed/unsealed)"
 }
 
+// Help returns a long-form help text of the `status` command.
 func (c *StatusCommand) Help() string {
 	helpText := `
 Usage: hashicorp-vault-monitor status [options]
@@ -55,6 +57,7 @@ Usage: hashicorp-vault-monitor status [options]
 	return strings.TrimSpace(helpText)
 }
 
+// Run executes the `status` command with the given CLI instance and command-line arguments.
 func (c *StatusCommand) Run(args []string) int {
 	vaultConfig := api.DefaultConfig()
 	if vaultConfig == nil {
