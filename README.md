@@ -12,6 +12,7 @@
 [ "$GOPATH" ] || export GOPATH="$HOME/go"
 go get -u github.com/madrisan/hashicorp-vault-monitor
 
+export PATH="$PATH:$GOPATH/bin"
 make -C $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor bootstrap dev
 $GOPATH/bin/hashicorp-vault-monitor -version
 ```
@@ -64,17 +65,16 @@ docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
 You can now run the monitoring binary by entering the commands:
 
 ```
-$GOPATH/bin/hashicorp-vault-monitor \
-    -address=http://127.0.0.1:8200 \
-    -status
-$GOPATH/bin/hashicorp-vault-monitor \
-    -address=http://127.0.0.1:8200 \
-    -token="39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
-    -policies="root,saltstack"
-$GOPATH/bin/hashicorp-vault-monitor \
-    -address=http://127.0.0.1:8200 \
-    -token="39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
-    -readkey secret/data/test/testkey
+$GOPATH/bin/hashicorp-vault-monitor status \
+    -address=http://127.0.0.1:8200
+
+$GOPATH/bin/hashicorp-vault-monitor policies \
+    -defined "root,saltstack" \
+    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+
+$GOPATH/bin/hashicorp-vault-monitor readkey \
+    -path secret/data/test/testkey \
+    -address=http://127.0.0.1:8200 -token="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 ```
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
@@ -86,9 +86,9 @@ variables `VAULT_ADDR` and `VAULT_TOKEN`:
 export VAULT_ADDR="http://127.0.0.1:8200"
 export VAULT_TOKEN="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 
-$GOPATH/bin/hashicorp-vault-monitor -status
-$GOPATH/bin/hashicorp-vault-monitor -policies="root,saltstack"
-$GOPATH/bin/hashicorp-vault-monitor -readkey secret/data/test/testkey
+$GOPATH/bin/hashicorp-vault-monitor status
+$GOPATH/bin/hashicorp-vault-monitor policies -defined "root,saltstack"
+$GOPATH/bin/hashicorp-vault-monitor readkey -path secret/data/test/testkey
 ```
 
 The *Root Token* can also be used to login to the Vault web interface at the
