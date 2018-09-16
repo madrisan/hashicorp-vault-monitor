@@ -42,7 +42,7 @@ func (c *StatusCommand) Help() string {
 	helpText := `
 Usage: hashicorp-vault-monitor status [options]
 
-  This command returns the status of the Vault server.
+  This command returns the status (sealed/unsealed) of a Vault server.
 
     $ hashicorp-vault-monitor status --address https://127.0.0.1:8200
 

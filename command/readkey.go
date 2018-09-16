@@ -49,7 +49,7 @@ func (c *ReadKeyCommand) Help() string {
 	helpText := `
 Usage: hashicorp-vault-monitor readkey [options]
 
-  This command check if it is possible to read a secret stored in Vault.
+  This command try to get a secret stored in a Vault server storage.
 
     $ hashicorp-vault-monitor readkey \
         --path secret/data/test/testkey \
