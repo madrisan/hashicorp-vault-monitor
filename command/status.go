@@ -49,8 +49,8 @@ Usage: hashicorp-vault-monitor status [options]
   The exit code reflects the seal status:
 
       - 0 - unsealed
-      - 1 - error
       - 2 - sealed
+      - 3 - error
 
   For a full list of examples, please see the documentation.
 
@@ -63,12 +63,12 @@ func (c *StatusCommand) Run(args []string) int {
 	vaultConfig := api.DefaultConfig()
 	if vaultConfig == nil {
 		c.Ui.Error("could not create/read default configuration for Vault")
-		return 1
+		return StateError
 	}
 	if vaultConfig.Error != nil {
 		c.Ui.Error("error encountered setting up default configuration: " +
 			vaultConfig.Error.Error())
-		return 1
+		return StateError
 	}
 
 	cmdFlags := flag.NewFlagSet("status", flag.ContinueOnError)
@@ -76,7 +76,7 @@ func (c *StatusCommand) Run(args []string) int {
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
-		return 1
+		return StateError
 	}
 
 	// note that `api.DefaultConfig` execute `api.ReadEnvironment` and thus
@@ -88,21 +88,21 @@ func (c *StatusCommand) Run(args []string) int {
 	client, err := vault.ClientInit(c.Address)
 	if err != nil {
 		c.Ui.Error(err.Error())
-		return 1
+		return StateError
 	}
 
 	status, err := client.Sys().SealStatus()
 	if err != nil {
-		c.Ui.Error(fmt.Sprintf("Error checking seal status: %s", err))
-		return 1
+		c.Ui.Error(fmt.Sprintf("error checking seal status: %s", err))
+		return StateError
 	}
 
 	if status.Sealed {
 		c.Ui.Output(fmt.Sprintf("Vault is sealed! Unseal Progress: %d/%d",
 			status.Progress, status.T))
-		return 2
+		return StateCritical
 	}
 
 	c.Ui.Output("Vault is unsealed")
-	return 0
+	return StateOk
 }

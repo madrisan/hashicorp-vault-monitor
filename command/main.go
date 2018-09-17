@@ -26,6 +26,11 @@ import (
 )
 
 const (
+	StateOk int = iota
+	_
+	StateCritical
+	StateError
+
 	addressDefault = "https://127.0.0.1:8200"
 	addressDescr   = "The address of the Vault server. " +
 		"Overrides the " + api.EnvVaultAddress + " environment variable if set"
@@ -89,7 +94,7 @@ func Run(args []string) int {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error executing CLI: %s\n", err.Error())
-		return 1
+		return StateError
 	}
 
 	return exitStatus

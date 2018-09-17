@@ -58,8 +58,8 @@ Usage: hashicorp-vault-monitor readkey [options]
   The exit code reflects the seal status:
 
       - 0 - the secret has been successfully read
-      - 1 - error
       - 2 - the secret cannot be found of read
+      - 3 - error
 
   For a full list of examples, please see the documentation.
 
@@ -72,12 +72,12 @@ func (c *ReadKeyCommand) Run(args []string) int {
 	vaultConfig := api.DefaultConfig()
 	if vaultConfig == nil {
 		c.Ui.Error("could not create/read default configuration for Vault")
-		return 1
+		return StateError
 	}
 	if vaultConfig.Error != nil {
 		c.Ui.Error("error encountered setting up default configuration: " +
 			vaultConfig.Error.Error())
-		return 1
+		return StateError
 	}
 
 	cmdFlags := flag.NewFlagSet("readkey", flag.ContinueOnError)
@@ -88,7 +88,7 @@ func (c *ReadKeyCommand) Run(args []string) int {
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
-		return 1
+		return StateError
 	}
 
 	// note that `api.DefaultConfig` execute `api.ReadEnvironment` and thus
@@ -100,7 +100,7 @@ func (c *ReadKeyCommand) Run(args []string) int {
 	client, err := vault.ClientInit(c.Address)
 	if err != nil {
 		c.Ui.Error(err.Error())
-		return 1
+		return StateError
 	}
 
 	if c.Token != "" {
@@ -112,11 +112,11 @@ func (c *ReadKeyCommand) Run(args []string) int {
 	secret, err := client.Logical().Read(path)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("error reading %s: %s", c.KeyPath, err))
-		return 2
+		return StateError
 	}
 	if secret == nil {
 		c.Ui.Error(fmt.Sprintf("no value found at %s", c.KeyPath))
-		return 2
+		return StateCritical
 	}
 
 	// secret.Data:
@@ -126,15 +126,15 @@ func (c *ReadKeyCommand) Run(args []string) int {
 		value, err := getRawField(data, key)
 		if err != nil {
 			c.Ui.Error(err.Error())
-			return 2
+			return StateCritical
 		}
 
 		c.Ui.Output(fmt.Sprintf("found value: '%s'", value))
-		return 0
+		return StateOk
 	}
 
 	c.Ui.Error(fmt.Sprintf("no value found at %s", c.KeyPath))
-	return 1
+	return StateCritical
 }
 
 func getRawField(data interface{}, field string) (string, error) {

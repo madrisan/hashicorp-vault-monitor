@@ -66,8 +66,8 @@ Usage: hashicorp-vault-monitor policies [options]
   The exit code reflects the seal status:
 
       - 0 - all the comma-separated list of policies are defined
-      - 1 - error
       - 2 - at least one of the policies is not defined
+      - 3 - error
 
   For a full list of examples, please see the documentation.
 
@@ -80,12 +80,12 @@ func (c *PoliciesCommand) Run(args []string) int {
 	vaultConfig := api.DefaultConfig()
 	if vaultConfig == nil {
 		c.Ui.Error("could not create/read default configuration for Vault")
-		return 1
+		return StateError
 	}
 	if vaultConfig.Error != nil {
 		c.Ui.Error("error encountered setting up default configuration: " +
 			vaultConfig.Error.Error())
-		return 1
+		return StateError
 	}
 
 	cmdFlags := flag.NewFlagSet("policies", flag.ContinueOnError)
@@ -96,7 +96,7 @@ func (c *PoliciesCommand) Run(args []string) int {
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
-		return 1
+		return StateError
 	}
 
 	// note that `api.DefaultConfig` execute `api.ReadEnvironment` and thus
@@ -108,7 +108,7 @@ func (c *PoliciesCommand) Run(args []string) int {
 	client, err := vault.ClientInit(c.Address)
 	if err != nil {
 		c.Ui.Error(err.Error())
-		return 1
+		return StateError
 	}
 
 	if c.Token != "" {
@@ -117,17 +117,17 @@ func (c *PoliciesCommand) Run(args []string) int {
 
 	activePolicies, err := client.Sys().ListPolicies()
 	if err != nil {
-		c.Ui.Error(fmt.Sprintf("Error checking policies: %s", err))
-		return 1
+		c.Ui.Error(fmt.Sprintf("error checking policies: %s", err))
+		return StateError
 	}
 
 	for _, policy := range strings.Split(c.Policies, ",") {
 		if !contains(activePolicies, policy) {
-			c.Ui.Error(fmt.Sprintf("No such Vault policy: %s", policy))
-			return 2
+			c.Ui.Error(fmt.Sprintf("no such Vault policy: %s", policy))
+			return StateCritical
 		}
 	}
 
-	c.Ui.Output("All the policies are defined")
-	return 0
+	c.Ui.Output("all the policies are defined")
+	return StateOk
 }
