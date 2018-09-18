@@ -1,7 +1,8 @@
-EXTERNAL_TOOLS=\
+EXTERNAL_TOOLS = \
 	github.com/mitchellh/gox
 
 CGO_ENABLED=0
+GOFMT_FILES ?= $$(find -name "*.go" -not -path "./vendor/*")
 
 default: dev
 
@@ -21,3 +22,8 @@ bootstrap:
 		go get -u $$tool; \
 	done
 
+fmtcheck:
+	./scripts/gofmtcheck.sh
+
+fmt:
+	gofmt -w $(GOFMT_FILES)
