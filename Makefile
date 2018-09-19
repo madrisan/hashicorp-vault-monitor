@@ -3,6 +3,7 @@ EXTERNAL_TOOLS = \
 
 CGO_ENABLED=0
 GOFMT_FILES ?= $$(find -name "*.go" -not -path "./vendor/*")
+TEST ?= $$(go list ./... | grep -v /vendor/)
 
 default: dev
 
@@ -27,3 +28,10 @@ fmtcheck:
 
 fmt:
 	gofmt -w $(GOFMT_FILES)
+
+# test runs the unit tests and vets the code
+test:
+	@CGO_ENABLED=$(CGO_ENABLED) \
+	VAULT_ADDR= \
+	VAULT_TOKEN= \
+	go test -tags='$(BUILD_TAGS)' $(TEST) -v -parallel=5
