@@ -1,9 +1,10 @@
 EXTERNAL_TOOLS = \
 	github.com/mitchellh/gox
 
-CGO_ENABLED=0
+CGO_ENABLED = 0
 GOFMT_FILES ?= $$(find -name "*.go" -not -path "./vendor/*")
 TEST ?= $$(go list ./... | grep -v /vendor/)
+TESTARGS = -v
 
 default: dev
 
@@ -34,4 +35,4 @@ test:
 	@CGO_ENABLED=$(CGO_ENABLED) \
 	VAULT_ADDR= \
 	VAULT_TOKEN= \
-	go test -tags='$(BUILD_TAGS)' $(TEST) -v -parallel=5
+	go test -tags='$(BUILD_TAGS)' $(TEST) $(TESTARGS) -parallel=5
