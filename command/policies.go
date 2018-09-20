@@ -36,6 +36,7 @@ type PoliciesCommand struct {
 	Token    string
 	Policies string
 	Ui       cli.Ui
+	client   *api.Client
 }
 
 func contains(items []string, item string) bool {
@@ -105,17 +106,20 @@ func (c *PoliciesCommand) Run(args []string) int {
 		vaultConfig.Address = c.Address
 	}
 
-	client, err := vault.ClientInit(c.Address)
-	if err != nil {
-		c.Ui.Error(err.Error())
-		return StateError
+	if c.client == nil {
+		client, err := vault.ClientInit(c.Address)
+		if err != nil {
+			c.Ui.Error(err.Error())
+			return StateError
+		}
+		c.client = client
 	}
 
 	if c.Token != "" {
-		client.SetToken(c.Token)
+		c.client.SetToken(c.Token)
 	}
 
-	activePolicies, err := client.Sys().ListPolicies()
+	activePolicies, err := c.client.Sys().ListPolicies()
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("error checking policies: %s", err))
 		return StateError
