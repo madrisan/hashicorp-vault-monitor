@@ -30,6 +30,7 @@ import (
 type StatusCommand struct {
 	Address string
 	Ui      cli.Ui
+	client  *api.Client
 }
 
 // Synopsis returns a short synopsis of the `status` command.
@@ -85,13 +86,16 @@ func (c *StatusCommand) Run(args []string) int {
 		vaultConfig.Address = c.Address
 	}
 
-	client, err := vault.ClientInit(c.Address)
-	if err != nil {
-		c.Ui.Error(err.Error())
-		return StateError
+	if c.client == nil {
+		client, err := vault.ClientInit(c.Address)
+		if err != nil {
+			c.Ui.Error(err.Error())
+			return StateError
+		}
+		c.client = client
 	}
 
-	status, err := client.Sys().SealStatus()
+	status, err := c.client.Sys().SealStatus()
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("error checking seal status: %s", err))
 		return StateError

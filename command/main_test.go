@@ -1,16 +1,39 @@
+/*
+  Copyright 2018 Davide Madrisan <davide.madrisan@gmail.com>
+
+  Licensed under the Mozilla Public License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.mozilla.org/en-US/MPL/2.0/
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+
+  Credit: This source code is based on the HashiCorp Vault testing code
+          (but bugs are mine).
+*/
+
 package command
 
 import (
+	"context"
 	"encoding/base64"
+	"net"
+	"net/http"
 	"testing"
+	"time"
 
 	log "github.com/hashicorp/go-hclog"
 	kv "github.com/hashicorp/vault-plugin-secrets-kv"
 	"github.com/hashicorp/vault/api"
-        "github.com/hashicorp/vault/audit"
-        "github.com/hashicorp/vault/builtin/logical/pki"
-        "github.com/hashicorp/vault/builtin/logical/ssh"
-        "github.com/hashicorp/vault/builtin/logical/transit"
+	"github.com/hashicorp/vault/audit"
+	"github.com/hashicorp/vault/builtin/logical/pki"
+	"github.com/hashicorp/vault/builtin/logical/ssh"
+	"github.com/hashicorp/vault/builtin/logical/transit"
 	"github.com/hashicorp/vault/logical"
 	"github.com/hashicorp/vault/vault"
 
@@ -80,4 +103,46 @@ func testVaultServerCoreConfig(tb testing.TB, coreConfig *vault.CoreConfig) (*ap
 	}
 
 	return client, unsealKeys, func() { defer cluster.Cleanup() }
+}
+
+// testVaultServerBad creates an http server that returns a 500 on each request
+// to simulate failures.
+func testVaultServerBad(t testing.TB) (*api.Client, func()) {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := &http.Server{
+		Addr: "127.0.0.1:0",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "500 internal server error", http.StatusInternalServerError)
+		}),
+		ReadTimeout:       1 * time.Second,
+		ReadHeaderTimeout: 1 * time.Second,
+		WriteTimeout:      1 * time.Second,
+		IdleTimeout:       1 * time.Second,
+	}
+
+	go func() {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			t.Fatal(err)
+		}
+	}()
+
+	client, err := api.NewClient(&api.Config{
+		Address: "http://" + listener.Addr().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return client, func() {
+		ctx, done := context.WithTimeout(context.Background(), 5*time.Second)
+		defer done()
+
+		server.Shutdown(ctx)
+	}
 }

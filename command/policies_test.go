@@ -19,10 +19,10 @@ package command
 import "testing"
 
 func TestContains(t *testing.T) {
-	tests := []struct {
-		values    []string
-		key       string
-		shouldbe  bool
+	cases := []struct {
+		values   []string
+		key      string
+		shouldbe bool
 	}{
 		{
 			[]string{"first", "second", "third"},
@@ -51,11 +51,11 @@ func TestContains(t *testing.T) {
 		},
 	}
 
-	for _, item := range tests {
-		v := contains(item.values, item.key)
-		if v != item.shouldbe {
-			t.Error("For", item.values,
-				"expected", item.shouldbe, "got", v,
+	for _, tc := range cases {
+		v := contains(tc.values, tc.key)
+		if v != tc.shouldbe {
+			t.Error("For", tc.values,
+				"expected", tc.shouldbe, "got", v,
 			)
 		}
 	}
