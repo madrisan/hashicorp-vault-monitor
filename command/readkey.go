@@ -97,7 +97,7 @@ func (c *ReadKeyCommand) Run(args []string) int {
 		vaultConfig.Address = c.Address
 	}
 
-	client, err := vault.ClientInit(c.Address)
+	client, err := vault.NewClient(c.Address)
 	if err != nil {
 		c.Ui.Error(err.Error())
 		return StateError

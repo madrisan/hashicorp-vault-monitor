@@ -107,7 +107,7 @@ func (c *PoliciesCommand) Run(args []string) int {
 	}
 
 	if c.client == nil {
-		client, err := vault.ClientInit(c.Address)
+		client, err := vault.NewClient(c.Address)
 		if err != nil {
 			c.Ui.Error(err.Error())
 			return StateError
