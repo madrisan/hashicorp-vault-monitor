@@ -24,6 +24,9 @@ bootstrap:
 		go get -u $$tool; \
 	done
 
+cover:
+	./scripts/coverage.sh --html
+
 fmtcheck:
 	./scripts/gofmtcheck.sh
 
