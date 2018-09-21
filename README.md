@@ -74,7 +74,7 @@ $GOPATH/bin/hashicorp-vault-monitor policies \
 
 $GOPATH/bin/hashicorp-vault-monitor readkey \
     -path secret/data/test/testkey \
-    -address=http://127.0.0.1:8200 -token="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 ```
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
