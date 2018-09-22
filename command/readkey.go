@@ -108,47 +108,30 @@ func (c *ReadKeyCommand) Run(args []string) int {
 	}
 
 	// see: https://godoc.org/github.com/hashicorp/vault/api#Secret
-	path, key := filepath.Split(c.KeyPath)
+	path, field := filepath.Split(c.KeyPath)
 	secret, err := client.Logical().Read(path)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("error reading %s: %s", c.KeyPath, err))
 		return StateError
 	}
 	if secret == nil {
-		c.Ui.Error(fmt.Sprintf("no value found at %s", c.KeyPath))
+		c.Ui.Error(fmt.Sprintf("no data found at %s", c.KeyPath))
 		return StateCritical
 	}
 
-	// secret.Data:
+	// secret.Data should be of type map[string]interface{}:
 	// - data -> map[akey:this-is-a-test]
 	// - metadata -> map[created_time:2018-08-31T15:36:31.894655728Z deletion_time: destroyed:false version:3]
 	if data, ok := secret.Data["data"]; ok && data != nil {
-		value, err := getRawField(data, key)
-		if err != nil {
-			c.Ui.Error(err.Error())
+		val := data.(map[string]interface{})[field]
+		if val == nil {
+			c.Ui.Error(fmt.Sprintf(
+				"field '%s' not present in secret", field))
 			return StateCritical
 		}
-
-		c.Ui.Output(fmt.Sprintf("found value: '%s'", value))
+		c.Ui.Output(fmt.Sprintf("found value: '%v'", val))
 		return StateOk
 	}
-
 	c.Ui.Error(fmt.Sprintf("no value found at %s", c.KeyPath))
 	return StateCritical
-}
-
-func getRawField(data interface{}, field string) (string, error) {
-	var val interface{}
-	switch data.(type) {
-	case *api.Secret:
-		val = data.(*api.Secret).Data[field]
-	case map[string]interface{}:
-		val = data.(map[string]interface{})[field]
-	}
-
-	if val == nil {
-		return "", fmt.Errorf("field '%s' not present in secret", field)
-	}
-
-	return val.(string), nil
 }
