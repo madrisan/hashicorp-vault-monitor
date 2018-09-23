@@ -57,7 +57,10 @@ func Run(args []string) int {
 		ErrorWriter: os.Stderr,
 	}
 
-	c := cli.NewCLI("hashicorp-vault-monitor", Version())
+	verInfo := version.GetVersion()
+	version := verInfo.FullVersionNumber(true)
+
+	c := cli.NewCLI("hashicorp-vault-monitor", version)
 	c.Args = args
 
 	c.Commands = map[string]cli.CommandFactory{
