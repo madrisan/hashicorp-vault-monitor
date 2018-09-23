@@ -99,7 +99,7 @@ func TestPoliciesCommand_Run(t *testing.T) {
 			StateOk,
 		},
 		{
-			"non_existant_policy",
+			"non_existent_policy",
 			[]string{"-defined", "nosuchpolicy"},
 			"no such Vault policy: nosuchpolicy",
 			StateCritical,
