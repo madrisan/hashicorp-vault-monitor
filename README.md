@@ -64,16 +64,32 @@ docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
 
 You can now run the monitoring binary by entering the commands:
 
+#### Monitoring the status (unsealed/sealed)
 ```
 $GOPATH/bin/hashicorp-vault-monitor status \
     -address=http://127.0.0.1:8200
+```
 
+#### Monitoring the installed Vault policies
+```
 $GOPATH/bin/hashicorp-vault-monitor policies \
     -defined "root,saltstack" \
     -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+```
 
+#### Monitoring the access to a Vault secret
+
+##### Get a secret from Vault KV secrets engine v1
+```
 $GOPATH/bin/hashicorp-vault-monitor readsecret \
-    -secret foo@secret/test \
+    -secret foo@secret/mysecret \
+    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+```
+
+##### Get a secret from Vault KV secrets engine v2
+```
+$GOPATH/bin/hashicorp-vault-monitor readsecret \
+    -secret foo@secret/data/mysecret \
     -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 ```
 
@@ -88,7 +104,8 @@ export VAULT_TOKEN="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 
 $GOPATH/bin/hashicorp-vault-monitor status
 $GOPATH/bin/hashicorp-vault-monitor policies -defined "root,saltstack"
-$GOPATH/bin/hashicorp-vault-monitor readsecret -secret foo@secret/test
+$GOPATH/bin/hashicorp-vault-monitor readsecret -secret foo@secret/mysecret
+$GOPATH/bin/hashicorp-vault-monitor readsecret -secret foo@secret/data/mysecret
 ```
 
 The *Root Token* can also be used to login to the Vault web interface at the
@@ -102,3 +119,6 @@ http://127.0.0.1:8200/ui
 
 ![](images/HashiCorp-Vault-web-ui-homepage.png?raw=true "HashiCorp Vault Web UI Homepage")
 ###### Image 2. Screenshot of the web UI homepage
+
+![](images/HashiCorp-Vault-web-ui-secrets.png?raw=true "HashiCorp Vault Web UI Secrets")
+###### Image 3. Screenshot of the web UI secrets management page
