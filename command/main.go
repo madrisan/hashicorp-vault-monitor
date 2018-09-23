@@ -25,12 +25,15 @@ import (
 	"github.com/mitchellh/cli"
 )
 
+// Exit (Nagios compatible) return codes constants
 const (
 	StateOk int = iota
 	_
 	StateCritical
 	StateError
+)
 
+const (
 	addressDefault = "https://127.0.0.1:8200"
 	addressDescr   = "The address of the Vault server. " +
 		"Overrides the " + api.EnvVaultAddress + " environment variable if set"
