@@ -68,8 +68,8 @@ func Run(args []string) int {
 				},
 			}, nil
 		},
-		"readkey": func() (cli.Command, error) {
-			return &ReadKeyCommand{
+		"readsecret": func() (cli.Command, error) {
+			return &ReadSecretCommand{
 				Ui: &cli.ColoredUi{
 					Ui:          ui,
 					ErrorColor:  cli.UiColorRed,
