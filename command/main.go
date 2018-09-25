@@ -64,8 +64,8 @@ func Run(args []string) int {
 	c.Args = args
 
 	c.Commands = map[string]cli.CommandFactory{
-		"policies": func() (cli.Command, error) {
-			return &PoliciesCommand{
+		"get": func() (cli.Command, error) {
+			return &GetCommand{
 				Ui: &cli.ColoredUi{
 					Ui:          ui,
 					ErrorColor:  cli.UiColorRed,
@@ -74,8 +74,8 @@ func Run(args []string) int {
 				},
 			}, nil
 		},
-		"readsecret": func() (cli.Command, error) {
-			return &ReadSecretCommand{
+		"policies": func() (cli.Command, error) {
+			return &PoliciesCommand{
 				Ui: &cli.ColoredUi{
 					Ui:          ui,
 					ErrorColor:  cli.UiColorRed,

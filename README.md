@@ -78,26 +78,26 @@ $GOPATH/bin/hashicorp-vault-monitor policies \
     -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 ```
 
-#### Monitoring the access to a Vault secret
+#### Monitoring the access to the Vault KV data store
 
-##### Get a secret from Vault KV secrets engine v1
+##### Get a secret from Vault KV data store v1
 ```
-$GOPATH/bin/hashicorp-vault-monitor readsecret \
-    -secret foo@secret/mysecret \
+$GOPATH/bin/hashicorp-vault-monitor get \
+    -path secret/mysecret -field foo \
     -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 ```
 
-##### Get a secret from Vault KV secrets engine v2
+##### Get a secret from Vault KV data store v2
 ```
-$GOPATH/bin/hashicorp-vault-monitor readsecret \
-    -secret foo@secret/data/mysecret \
+$GOPATH/bin/hashicorp-vault-monitor get \
+    -path secret/data/mysecret -field foo \
     -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 ```
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
 your output.
 
-You can omit the `-address` and `-policies` flags by setting the environment
+You can omit the `-address` and `-token` flags by setting the environment
 variables `VAULT_ADDR` and `VAULT_TOKEN`:
 ```
 export VAULT_ADDR="http://127.0.0.1:8200"
@@ -105,8 +105,8 @@ export VAULT_TOKEN="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 
 $GOPATH/bin/hashicorp-vault-monitor status
 $GOPATH/bin/hashicorp-vault-monitor policies -defined "root,saltstack"
-$GOPATH/bin/hashicorp-vault-monitor readsecret -secret foo@secret/mysecret
-$GOPATH/bin/hashicorp-vault-monitor readsecret -secret foo@secret/data/mysecret
+$GOPATH/bin/hashicorp-vault-monitor get -path secret/mysecret -field foo
+$GOPATH/bin/hashicorp-vault-monitor get -path secret/data/mysecret -field foo
 ```
 
 The *Root Token* can also be used to login to the Vault web interface at the

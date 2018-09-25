@@ -24,12 +24,10 @@ import (
 	"github.com/mitchellh/cli"
 )
 
-func testReadSecretCommand(t *testing.T, token string, client *api.Client) (*cli.MockUi, *ReadSecretCommand) {
+func testGetCommand(t *testing.T, token string, client *api.Client) (*cli.MockUi, *GetCommand) {
 	ui := cli.NewMockUi()
-	return ui, &ReadSecretCommand{
-		Address: "",
+	return ui, &GetCommand{
 		Token:   token,
-		KeyPath: "",
 		Ui:      ui,
 	}
 }
@@ -44,14 +42,14 @@ func TestReadSecretCommand_Run(t *testing.T) {
 		code int
 	}{
 		{
-			"read_foo",
-			[]string{"-secret", "foo@secret/test"},
+			"get_foo",
+			[]string{"-path", "secret/test", "-field", "foo"},
 			"bar",
 			StateOk,
 		},
 	}
 
-	t.Run("readsecret", func(t *testing.T) {
+	t.Run("get", func(t *testing.T) {
 		t.Parallel()
 
 		for _, tc := range cases {
@@ -78,7 +76,7 @@ func TestReadSecretCommand_Run(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				ui, cmd := testReadSecretCommand(t, token, client)
+				ui, cmd := testGetCommand(t, token, client)
 				cmd.client = client
 
 				code := cmd.Run(tc.args)
@@ -100,9 +98,9 @@ func TestReadSecretCommand_Run(t *testing.T) {
 		client, closer := testVaultServerBad(t)
 		defer closer()
 
-		ui, cmd := testReadSecretCommand(t, "", client)
+		ui, cmd := testGetCommand(t, "", client)
 
-		code := cmd.Run([]string{"-secret", "foo@secret/test"})
+		code := cmd.Run([]string{"-path", "secret/test", "-field", "foo"})
 		if exp := StateError; code != exp {
 			t.Errorf("expected %d to be %d", code, exp)
 		}

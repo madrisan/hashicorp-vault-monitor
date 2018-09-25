@@ -17,7 +17,6 @@
 package command
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -28,32 +27,35 @@ import (
 )
 
 const (
-	readSecretCommandDescr = "Read a Vault secret"
+	getCommandDescr = "Retrieves data from the KV store"
+	getFieldDescr = "Print only the field with the given name"
+	getPathDescr = "Retrieves the data saved at a specific path"
 )
 
-// ReadSecretCommand is a CLI Command that holds the attributes of the command `readsecret`.
-type ReadSecretCommand struct {
+// GetCommand is a CLI Command that holds the attributes of the command `readsecret`.
+type GetCommand struct {
 	Address string
 	Token   string
-	KeyPath string
+	Field   string
+	Path    string
 	Ui      cli.Ui
 	client  *api.Client
 }
 
-// Synopsis returns a short synopsis of the `readsecret` command.
-func (c *ReadSecretCommand) Synopsis() string {
-	return "Try to read a secret stored in Vault"
+// Synopsis returns a short synopsis of the `get` command.
+func (c *GetCommand) Synopsis() string {
+	return "Retrieves data from the KV store"
 }
 
-// Help returns a long-form help text of the `readkey` command.
-func (c *ReadSecretCommand) Help() string {
+// Help returns a long-form help text of the `get` command.
+func (c *GetCommand) Help() string {
 	helpText := `
-Usage: hashicorp-vault-monitor readsecret [options]
+Usage: hashicorp-vault-monitor get [options]
 
-  This command try to get a secret stored in a Vault server storage.
+  This command try to retrieve secret data from the KV store.
 
-    $ hashicorp-vault-monitor readkey \
-        --secret foo@secret/test \
+    $ hashicorp-vault-monitor get \
+        --path secret/test --field foo \
         --address https://127.0.0.1:8200 --token "12e2bf2b-3b82-9eff-07e4-8c7ad97715a9"
 
   The exit code reflects the seal status:
@@ -68,8 +70,8 @@ Usage: hashicorp-vault-monitor readsecret [options]
 	return strings.TrimSpace(helpText)
 }
 
-// Run executes the `readsecret` command with the given CLI instance and command-line arguments.
-func (c *ReadSecretCommand) Run(args []string) int {
+// Run executes the `get` command with the given CLI instance and command-line arguments.
+func (c *GetCommand) Run(args []string) int {
 	vaultConfig := api.DefaultConfig()
 	if vaultConfig == nil {
 		c.Ui.Error("could not create/read default configuration for Vault")
@@ -81,19 +83,14 @@ func (c *ReadSecretCommand) Run(args []string) int {
 		return StateError
 	}
 
-	cmdFlags := flag.NewFlagSet("readkey", flag.ContinueOnError)
+	cmdFlags := flag.NewFlagSet("get", flag.ContinueOnError)
 	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.Token, "token", tokenDefault, tokenDescr)
-	cmdFlags.StringVar(&c.KeyPath, "secret", "", policiesDescr)
+	cmdFlags.StringVar(&c.Field, "field", "", getFieldDescr)
+	cmdFlags.StringVar(&c.Path, "path", "", getPathDescr)
 
 	if err := cmdFlags.Parse(args); err != nil {
-		c.Ui.Error(err.Error())
-		return StateError
-	}
-
-	field, path, err := keyPathSplit(c.KeyPath)
-	if err != nil {
 		c.Ui.Error(err.Error())
 		return StateError
 	}
@@ -117,13 +114,13 @@ func (c *ReadSecretCommand) Run(args []string) int {
 		c.client.SetToken(c.Token)
 	}
 
-	secret, err := c.client.Logical().Read(path)
+	secret, err := c.client.Logical().Read(c.Path)
 	if err != nil {
-		c.Ui.Error(fmt.Sprintf("error reading %s: %s", path, err))
+		c.Ui.Error(fmt.Sprintf("error reading %s: %s", c.Path, err))
 		return StateError
 	}
 	if secret == nil {
-		c.Ui.Error(fmt.Sprintf("no data found at %s", path))
+		c.Ui.Error(fmt.Sprintf("no data found at %s", c.Path))
 		return StateCritical
 	}
 
@@ -134,27 +131,18 @@ func (c *ReadSecretCommand) Run(args []string) int {
 	// - map[foo:bar]
 	// See: https://godoc.org/github.com/hashicorp/vault/api#Secret
 	if data, ok := secret.Data["data"]; ok && data != nil {
-		val := data.(map[string]interface{})[field]
+		val := data.(map[string]interface{})[c.Field]
 		if val == nil {
 			c.Ui.Error(fmt.Sprintf(
-                               "field '%s' not present in secret", field))
+                               "field '%s' not present in secret", c.Field))
 			return StateCritical
 		}
 		c.Ui.Output(fmt.Sprintf("found value: '%v'", val))
 		return StateOk
-	} else if val, ok := secret.Data[field]; ok && val != nil {
+	} else if val, ok := secret.Data[c.Field]; ok && val != nil {
 		c.Ui.Output(fmt.Sprintf("found value: '%v'", val))
 		return StateOk
 	}
-	c.Ui.Error(fmt.Sprintf("field '%s' not present in secret", field))
+	c.Ui.Error(fmt.Sprintf("field '%s' not present in secret", c.Field))
 	return StateCritical
-}
-
-// keyPathSplit split a KeyPath string into the key and path parts
-func keyPathSplit(keypath string) (string, string, error) {
-	s := strings.Split(keypath, "@")
-	if len(s) < 2 {
-		return "" , "", errors.New("wrong format for a KeyPath argument")
-	}
-	return s[0], vault.SanitizePath(s[1]), nil
 }
