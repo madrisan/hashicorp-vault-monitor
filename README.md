@@ -1,6 +1,6 @@
 ![Release Status](https://img.shields.io/badge/status-beta-yellow.svg)
 [![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](https://spdx.org/licenses/MPL-2.0.html)
-[![Coverage](https://img.shields.io/badge/Go%20Coverage-50%25-brightgreen.svg?longCache=true&style=flat)](https://github.com/jpoles1/gopherbadger)
+[![Coverage](https://img.shields.io/badge/Go%20Coverage-51%25-green.svg?longCache=true&style=flat)](https://github.com/jpoles1/gopherbadger)
 [![Go Report Card](https://goreportcard.com/badge/github.com/madrisan/hashicorp-vault-monitor)](https://goreportcard.com/report/github.com/madrisan/hashicorp-vault-monitor)
 
 # Hashicorp Vault Monitor [![GoDoc](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor?status.png)](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor)
@@ -74,8 +74,8 @@ $GOPATH/bin/hashicorp-vault-monitor status \
 #### Monitoring the installed Vault policies
 ```
 $GOPATH/bin/hashicorp-vault-monitor policies \
-    -defined "root,saltstack" \
-    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -defined "root,saltstack"
 ```
 
 #### Monitoring the access to the Vault KV data store
@@ -83,15 +83,15 @@ $GOPATH/bin/hashicorp-vault-monitor policies \
 ##### Get a secret from Vault KV data store v1
 ```
 $GOPATH/bin/hashicorp-vault-monitor get \
-    -path secret/mysecret -field foo \
-    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -field foo secret/mysecret
 ```
 
 ##### Get a secret from Vault KV data store v2
 ```
 $GOPATH/bin/hashicorp-vault-monitor get \
-    -path secret/data/mysecret -field foo \
-    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -field foo secret/data/mysecret
 ```
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
@@ -105,8 +105,8 @@ export VAULT_TOKEN="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
 
 $GOPATH/bin/hashicorp-vault-monitor status
 $GOPATH/bin/hashicorp-vault-monitor policies -defined "root,saltstack"
-$GOPATH/bin/hashicorp-vault-monitor get -path secret/mysecret -field foo
-$GOPATH/bin/hashicorp-vault-monitor get -path secret/data/mysecret -field foo
+$GOPATH/bin/hashicorp-vault-monitor get -field foo secret/mysecret
+$GOPATH/bin/hashicorp-vault-monitor get -field foo secret/data/mysecret
 ```
 
 The *Root Token* can also be used to login to the Vault web interface at the

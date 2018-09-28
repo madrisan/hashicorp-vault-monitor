@@ -42,8 +42,20 @@ func TestReadSecretCommand_Run(t *testing.T) {
 		code int
 	}{
 		{
+			"not_enough_args",
+			[]string{},
+			"Not enough arguments",
+			StateError,
+		},
+		{
+			"mandatory_field_arg",
+			[]string{"secret/test"},
+			"Missing '-field' flag or empty field set",
+			StateError,
+		},
+		{
 			"get_foo",
-			[]string{"-path", "secret/test", "-field", "foo"},
+			[]string{"-field", "foo", "secret/test"},
 			"bar",
 			StateOk,
 		},
@@ -100,7 +112,7 @@ func TestReadSecretCommand_Run(t *testing.T) {
 
 		ui, cmd := testGetCommand(t, "", client)
 
-		code := cmd.Run([]string{"-path", "secret/test", "-field", "foo"})
+		code := cmd.Run([]string{"-field", "foo", "secret/test"})
 		if exp := StateError; code != exp {
 			t.Errorf("expected %d to be %d", code, exp)
 		}

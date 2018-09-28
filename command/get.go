@@ -19,7 +19,6 @@ package command
 import (
 	"flag"
 	"fmt"
-	"strings"
 
 	"github.com/hashicorp/vault/api"
 	"github.com/madrisan/hashicorp-vault-monitor/vault"
@@ -28,8 +27,7 @@ import (
 
 const (
 	getCommandDescr = "Retrieves data from the KV store"
-	getFieldDescr = "Print only the field with the given name"
-	getPathDescr = "Retrieves the data saved at a specific path"
+	getFieldDescr   = "Print only the field with the given name"
 )
 
 // GetCommand is a CLI Command that holds the attributes of the command `readsecret`.
@@ -50,24 +48,37 @@ func (c *GetCommand) Synopsis() string {
 // Help returns a long-form help text of the `get` command.
 func (c *GetCommand) Help() string {
 	helpText := `
-Usage: hashicorp-vault-monitor get [options]
+Usage: hashicorp-vault-monitor get [options] -field FIELD KEY
 
-  This command try to retrieve secret data from the KV store.
+  This command retrieves the value from Vault's key-value store at the given
+  key name. If no key exists with that name, an error is returned.
 
-    $ hashicorp-vault-monitor get \
-        --path secret/test --field foo \
-        --address https://127.0.0.1:8200 --token "12e2bf2b-3b82-9eff-07e4-8c7ad97715a9"
+    $ hashicorp-vault-monitor get -field foo secret/test
 
-  The exit code reflects the seal status:
+  Additional flags and more advanced use cases are detailed below.
 
-      - 0 - the secret has been successfully read
-      - 2 - the secret cannot be found of read
-      - 3 - error
+    -address=<string>
+       Address of the Vault server. The default is https://127.0.0.1:8200. This
+       can also be specified via the VAULT_ADDR environment variable.
 
-  For a full list of examples, please see the documentation.
+    -token=<string>
+       Specify a token for authentication. This can also be specified via the
+       VAULT_TOKEN environment variable.
 
+  Mandatory Options:
+
+    -field=<string>
+       Print only the field with the given name.
+
+  The exit code reflects the result of the read operation:
+
+      - %d - the secret has been successfully read
+      - %d - the secret cannot be found of read
+      - %d - error
+
+  For a full list of examples, please see the online documentation.
 `
-	return strings.TrimSpace(helpText)
+	return fmt.Sprintf(helpText, StateOk, StateCritical, StateError)
 }
 
 // Run executes the `get` command with the given CLI instance and command-line arguments.
@@ -88,10 +99,26 @@ func (c *GetCommand) Run(args []string) int {
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.Token, "token", tokenDefault, tokenDescr)
 	cmdFlags.StringVar(&c.Field, "field", "", getFieldDescr)
-	cmdFlags.StringVar(&c.Path, "path", "", getPathDescr)
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
+		return StateError
+	}
+
+	args = cmdFlags.Args()
+	switch {
+	case len(args) < 1:
+		c.Ui.Error(fmt.Sprintf("Not enough arguments (expected 1, got %d)", len(args)))
+		return StateError
+	case len(args) > 1:
+		c.Ui.Error(fmt.Sprintf("Too many arguments (expected 1, got %d)", len(args)))
+		return StateError
+	}
+
+	c.Path = args[0]
+
+	if c.Field == "" {
+		c.Ui.Error("Missing '-field' flag or empty field set")
 		return StateError
 	}
 
@@ -101,14 +128,14 @@ func (c *GetCommand) Run(args []string) int {
 		vaultConfig.Address = c.Address
 	}
 
-        if c.client == nil {
-                client, err := vault.NewClient(c.Address)
-                if err != nil {
-                        c.Ui.Error(err.Error())
-                        return StateError
-                }
-                c.client = client
-        }
+	if c.client == nil {
+		client, err := vault.NewClient(c.Address)
+		if err != nil {
+			c.Ui.Error(err.Error())
+			return StateError
+		}
+		c.client = client
+	}
 
 	if c.Token != "" {
 		c.client.SetToken(c.Token)
@@ -134,7 +161,7 @@ func (c *GetCommand) Run(args []string) int {
 		val := data.(map[string]interface{})[c.Field]
 		if val == nil {
 			c.Ui.Error(fmt.Sprintf(
-                               "field '%s' not present in secret", c.Field))
+				"field '%s' not present in secret", c.Field))
 			return StateCritical
 		}
 		c.Ui.Output(fmt.Sprintf("found value: '%v'", val))
