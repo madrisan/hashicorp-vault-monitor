@@ -85,6 +85,13 @@ func (c *StatusCommand) Run(args []string) int {
 		return StateError
 	}
 
+	args = cmdFlags.Args()
+	if len(args) > 0 {
+		c.Ui.Error(fmt.Sprintf(
+			"Too many arguments (expected 0, got %d)", len(args)))
+		return StateError
+	}
+
 	// note that `api.DefaultConfig` execute `api.ReadEnvironment` and thus
 	// load also the all the Vault environment variables but `VAULT_TOKEN`
 	if c.Address != "" {

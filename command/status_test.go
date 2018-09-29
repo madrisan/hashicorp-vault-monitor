@@ -44,8 +44,13 @@ func TestStatusCommand_Run(t *testing.T) {
 		code int
 	}{
 		{
+			"too_many_args",
+			[]string{"arg1"},
+			"Too many arguments",
+			StateError,
+		},
+		{
 			"unsealed",
-			//[]string{"status"},
 			[]string{},
 			"Vault is unsealed",
 			StateOk,
@@ -68,9 +73,9 @@ func TestStatusCommand_Run(t *testing.T) {
 					t.Errorf("expected %d to be %d", code, tc.code)
 				}
 
-				stdout := ui.OutputWriter.String()
-				if !strings.Contains(stdout, tc.out) {
-					t.Errorf("expected %q to contain %q", stdout, tc.out)
+				combined := ui.OutputWriter.String() + ui.ErrorWriter.String()
+				if !strings.Contains(combined, tc.out) {
+					t.Errorf("expected %q to contain %q", combined, tc.out)
 				}
 			})
 		}
