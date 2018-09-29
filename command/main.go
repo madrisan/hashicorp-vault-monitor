@@ -43,12 +43,6 @@ const (
 		"Overrides the " + api.EnvVaultToken + " environment variable if set"
 )
 
-// Version returns the semantic version (see http://semver.org) of the tool.
-func Version() string {
-	versionInfo := version.GetVersion()
-	return versionInfo.VersionNumber()
-}
-
 // Run initializes a CLI instance and its command state engine.
 func Run(args []string) int {
 	ui := &cli.BasicUi{
