@@ -19,7 +19,6 @@ package command
 import (
 	"flag"
 	"fmt"
-	"strings"
 
 	"github.com/hashicorp/vault/api"
 	"github.com/madrisan/hashicorp-vault-monitor/vault"
@@ -45,18 +44,24 @@ Usage: hashicorp-vault-monitor status [options]
 
   This command returns the status (sealed/unsealed) of a Vault server.
 
-    $ hashicorp-vault-monitor status --address https://127.0.0.1:8200
+    $ hashicorp-vault-monitor status
+
+  Additional flags and more advanced use cases are detailed below.
+
+    -address=<string>
+       Address of the Vault server. The default is https://127.0.0.1:8200. This
+       can also be specified via the VAULT_ADDR environment variable.
 
   The exit code reflects the seal status:
 
-      - 0 - unsealed
-      - 2 - sealed
-      - 3 - error
+      - %d - the secret has been successfully read
+      - %d - the secret cannot be found of read
+      - %d - error
 
-  For a full list of examples, please see the documentation.
-
+  For a full list of examples, please see the online documentation.
 `
-	return strings.TrimSpace(helpText)
+	return fmt.Sprintf(helpText,
+		StateOk, StateCritical, StateError)
 }
 
 // Run executes the `status` command with the given CLI instance and command-line arguments.
