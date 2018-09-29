@@ -32,7 +32,7 @@ func testGetCommand(t *testing.T, token string, client *api.Client) (*cli.MockUi
 	}
 }
 
-func TestReadSecretCommand_Run(t *testing.T) {
+func TestGetCommand_Run(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
