@@ -19,22 +19,17 @@ package command
 import (
 	"flag"
 	"fmt"
-	"strings"
 
 	"github.com/hashicorp/vault/api"
 	"github.com/madrisan/hashicorp-vault-monitor/vault"
 	"github.com/mitchellh/cli"
 )
 
-const (
-	policiesDescr = "Comma-separated list of policies to be checked for existence"
-)
-
 // PoliciesCommand is a CLI Command that holds the attributes of the command `policies`.
 type PoliciesCommand struct {
 	Address  string
 	Token    string
-	Policies string
+	Policies []string
 	Ui       cli.Ui
 	client   *api.Client
 }
@@ -56,24 +51,32 @@ func (c *PoliciesCommand) Synopsis() string {
 // Help returns a long-form help text of the `policies` command.
 func (c *PoliciesCommand) Help() string {
 	helpText := `
-Usage: hashicorp-vault-monitor policies [options]
+Usage: hashicorp-vault-monitor policies [options] POLICIES
 
   This command check for the active policies of a Vault server.
 
-    $ hashicorp-vault-monitor policies \
-        --defined "custpolicy1,custpolicy2" \
-        --address https://127.0.0.1:8200 --token "12e2bf2b-3b82-9eff-07e4-8c7ad97715a9"
+    $ hashicorp-vault-monitor policies custpolicy1 custpolicy1 ...
 
-  The exit code reflects the seal status:
+  Additional flags and more advanced use cases are detailed below.
 
-      - 0 - all the comma-separated list of policies are defined
-      - 2 - at least one of the policies is not defined
-      - 3 - error
+    -address=<string>
+       Address of the Vault server. The default is https://127.0.0.1:8200. This
+       can also be specified via the VAULT_ADDR environment variable.
 
-  For a full list of examples, please see the documentation.
+    -token=<string>
+       Specify a token for authentication. This can also be specified via the
+       VAULT_TOKEN environment variable.
 
+  The exit code reflects the status of the policies:
+
+      - %d - the secret has been successfully read
+      - %d - the secret cannot be found of read
+      - %d - error
+
+  For a full list of examples, please see the online documentation.
 `
-	return strings.TrimSpace(helpText)
+	return fmt.Sprintf(helpText,
+		StateOk, StateCritical, StateError)
 }
 
 // Run executes the `policies` command with the given CLI instance and command-line arguments.
@@ -93,12 +96,20 @@ func (c *PoliciesCommand) Run(args []string) int {
 	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.Token, "token", tokenDefault, tokenDescr)
-	cmdFlags.StringVar(&c.Policies, "defined", "", policiesDescr)
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
 		return StateError
 	}
+
+	args = cmdFlags.Args()
+	if len(args) < 1 {
+		c.Ui.Error(fmt.Sprintf(
+			"Not enough arguments (expected at list 1)"))
+		return StateError
+	}
+
+	c.Policies = args[0:]
 
 	// note that `api.DefaultConfig` execute `api.ReadEnvironment` and thus
 	// load also the all the Vault environment variables but `VAULT_TOKEN`
@@ -125,7 +136,7 @@ func (c *PoliciesCommand) Run(args []string) int {
 		return StateError
 	}
 
-	for _, policy := range strings.Split(c.Policies, ",") {
+	for _, policy := range c.Policies {
 		if !contains(activePolicies, policy) {
 			c.Ui.Error(fmt.Sprintf("no such Vault policy: %s", policy))
 			return StateCritical

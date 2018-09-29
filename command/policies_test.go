@@ -70,10 +70,8 @@ func TestContains(t *testing.T) {
 func testPoliciesCommand(t *testing.T, token string) (*cli.MockUi, *PoliciesCommand) {
 	ui := cli.NewMockUi()
 	return ui, &PoliciesCommand{
-		Address:  "",
-		Token:    token,
-		Policies: "",
-		Ui:       ui,
+		Token: token,
+		Ui:    ui,
 	}
 }
 
@@ -87,26 +85,32 @@ func TestPoliciesCommand_Run(t *testing.T) {
 		code int
 	}{
 		{
+			"not_enough_args",
+			[]string{},
+			"Not enough arguments",
+			StateError,
+		},
+		{
 			"default_policy",
-			[]string{"-defined", "default"},
+			[]string{"default"},
 			"all the policies are defined",
 			StateOk,
 		},
 		{
 			"default_policies",
-			[]string{"-defined", "default,root"},
+			[]string{"default", "root"},
 			"all the policies are defined",
 			StateOk,
 		},
 		{
 			"non_existent_policy",
-			[]string{"-defined", "nosuchpolicy"},
+			[]string{"nosuchpolicy"},
 			"no such Vault policy: nosuchpolicy",
 			StateCritical,
 		},
 		{
-			"mixed_policies",
-			[]string{"-defined", "default,nosuchpolicy"},
+			"existing_and_non_existing_policies",
+			[]string{"default", "nosuchpolicy"},
 			"no such Vault policy: nosuchpolicy",
 			StateCritical,
 		},
@@ -157,7 +161,7 @@ func TestPoliciesCommand_Run(t *testing.T) {
 		ui, cmd := testPoliciesCommand(t, "")
 		cmd.client = client
 
-		code := cmd.Run([]string{})
+		code := cmd.Run([]string{"default"})
 		if exp := StateError; code != exp {
 			t.Errorf("expected %d to be %d", code, exp)
 		}

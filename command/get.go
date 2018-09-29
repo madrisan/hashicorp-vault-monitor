@@ -78,7 +78,8 @@ Usage: hashicorp-vault-monitor get [options] -field FIELD KEY
 
   For a full list of examples, please see the online documentation.
 `
-	return fmt.Sprintf(helpText, StateOk, StateCritical, StateError)
+	return fmt.Sprintf(helpText,
+		StateOk, StateCritical, StateError)
 }
 
 // Run executes the `get` command with the given CLI instance and command-line arguments.
