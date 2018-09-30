@@ -29,8 +29,8 @@ const (
 // GetCommand is a CLI Command that holds the attributes of the command `readsecret`.
 type GetCommand struct {
 	*BaseCommand
-	Field   string
-	Path    string
+	Field string
+	Path  string
 }
 
 // Synopsis returns a short synopsis of the `get` command.

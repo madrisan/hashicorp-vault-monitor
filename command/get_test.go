@@ -28,8 +28,8 @@ func testGetCommand(t *testing.T, token string, client *api.Client) (*cli.MockUi
 	ui := cli.NewMockUi()
 	return ui, &GetCommand{
 		BaseCommand: &BaseCommand{
-			Token:   token,
-			Ui:      ui,
+			Token: token,
+			Ui:    ui,
 		},
 	}
 }
