@@ -29,8 +29,9 @@ import (
 func testStatusCommand(t *testing.T) (*cli.MockUi, *StatusCommand) {
 	ui := cli.NewMockUi()
 	return ui, &StatusCommand{
-		Address: "",
-		Ui:      ui,
+		BaseCommand: &BaseCommand{
+			Ui: ui,
+		},
 	}
 }
 

@@ -70,8 +70,10 @@ func TestContains(t *testing.T) {
 func testPoliciesCommand(t *testing.T, token string) (*cli.MockUi, *PoliciesCommand) {
 	ui := cli.NewMockUi()
 	return ui, &PoliciesCommand{
-		Token: token,
-		Ui:    ui,
+		BaseCommand: &BaseCommand{
+			Token: token,
+			Ui:    ui,
+		},
 	}
 }
 

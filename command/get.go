@@ -19,10 +19,6 @@ package command
 import (
 	"flag"
 	"fmt"
-
-	"github.com/hashicorp/vault/api"
-	"github.com/madrisan/hashicorp-vault-monitor/vault"
-	"github.com/mitchellh/cli"
 )
 
 const (
@@ -32,12 +28,9 @@ const (
 
 // GetCommand is a CLI Command that holds the attributes of the command `readsecret`.
 type GetCommand struct {
-	Address string
-	Token   string
+	*BaseCommand
 	Field   string
 	Path    string
-	Ui      cli.Ui
-	client  *api.Client
 }
 
 // Synopsis returns a short synopsis of the `get` command.
@@ -84,17 +77,6 @@ Usage: hashicorp-vault-monitor get [options] -field FIELD KEY
 
 // Run executes the `get` command with the given CLI instance and command-line arguments.
 func (c *GetCommand) Run(args []string) int {
-	vaultConfig := api.DefaultConfig()
-	if vaultConfig == nil {
-		c.Ui.Error("could not create/read default configuration for Vault")
-		return StateError
-	}
-	if vaultConfig.Error != nil {
-		c.Ui.Error("error encountered setting up default configuration: " +
-			vaultConfig.Error.Error())
-		return StateError
-	}
-
 	cmdFlags := flag.NewFlagSet("get", flag.ContinueOnError)
 	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
@@ -123,26 +105,13 @@ func (c *GetCommand) Run(args []string) int {
 		return StateError
 	}
 
-	// note that `api.DefaultConfig` execute `api.ReadEnvironment` and thus
-	// load also the all the Vault environment variables but `VAULT_TOKEN`
-	if c.Address != "" {
-		vaultConfig.Address = c.Address
+	client, err := c.Client()
+	if err != nil {
+		c.Ui.Error(err.Error())
+		return StateError
 	}
 
-	if c.client == nil {
-		client, err := vault.NewClient(c.Address)
-		if err != nil {
-			c.Ui.Error(err.Error())
-			return StateError
-		}
-		c.client = client
-	}
-
-	if c.Token != "" {
-		c.client.SetToken(c.Token)
-	}
-
-	secret, err := c.client.Logical().Read(c.Path)
+	secret, err := client.Logical().Read(c.Path)
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("error reading %s: %s", c.Path, err))
 		return StateError

@@ -60,31 +60,37 @@ func Run(args []string) int {
 	c.Commands = map[string]cli.CommandFactory{
 		"get": func() (cli.Command, error) {
 			return &GetCommand{
-				Ui: &cli.ColoredUi{
-					Ui:          ui,
-					ErrorColor:  cli.UiColorRed,
-					OutputColor: cli.UiColorGreen,
-					WarnColor:   cli.UiColorYellow,
+				BaseCommand: &BaseCommand{
+					Ui: &cli.ColoredUi{
+						Ui:          ui,
+						ErrorColor:  cli.UiColorRed,
+						OutputColor: cli.UiColorGreen,
+						WarnColor:   cli.UiColorYellow,
+					},
 				},
 			}, nil
 		},
 		"policies": func() (cli.Command, error) {
 			return &PoliciesCommand{
-				Ui: &cli.ColoredUi{
-					Ui:          ui,
-					ErrorColor:  cli.UiColorRed,
-					OutputColor: cli.UiColorGreen,
-					WarnColor:   cli.UiColorYellow,
+				BaseCommand: &BaseCommand{
+					Ui: &cli.ColoredUi{
+						Ui:          ui,
+						ErrorColor:  cli.UiColorRed,
+						OutputColor: cli.UiColorGreen,
+						WarnColor:   cli.UiColorYellow,
+					},
 				},
 			}, nil
 		},
 		"status": func() (cli.Command, error) {
 			return &StatusCommand{
-				Ui: &cli.ColoredUi{
-					Ui:          ui,
-					ErrorColor:  cli.UiColorRed,
-					OutputColor: cli.UiColorGreen,
-					WarnColor:   cli.UiColorYellow,
+				BaseCommand: &BaseCommand{
+					Ui: &cli.ColoredUi{
+						Ui:          ui,
+						ErrorColor:  cli.UiColorRed,
+						OutputColor: cli.UiColorGreen,
+						WarnColor:   cli.UiColorYellow,
+					},
 				},
 			}, nil
 		},

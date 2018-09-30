@@ -19,19 +19,12 @@ package command
 import (
 	"flag"
 	"fmt"
-
-	"github.com/hashicorp/vault/api"
-	"github.com/madrisan/hashicorp-vault-monitor/vault"
-	"github.com/mitchellh/cli"
 )
 
 // PoliciesCommand is a CLI Command that holds the attributes of the command `policies`.
 type PoliciesCommand struct {
-	Address  string
-	Token    string
+	*BaseCommand
 	Policies []string
-	Ui       cli.Ui
-	client   *api.Client
 }
 
 func contains(items []string, item string) bool {
@@ -81,17 +74,6 @@ Usage: hashicorp-vault-monitor policies [options] POLICIES
 
 // Run executes the `policies` command with the given CLI instance and command-line arguments.
 func (c *PoliciesCommand) Run(args []string) int {
-	vaultConfig := api.DefaultConfig()
-	if vaultConfig == nil {
-		c.Ui.Error("could not create/read default configuration for Vault")
-		return StateError
-	}
-	if vaultConfig.Error != nil {
-		c.Ui.Error("error encountered setting up default configuration: " +
-			vaultConfig.Error.Error())
-		return StateError
-	}
-
 	cmdFlags := flag.NewFlagSet("policies", flag.ContinueOnError)
 	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
@@ -111,26 +93,13 @@ func (c *PoliciesCommand) Run(args []string) int {
 
 	c.Policies = args[0:]
 
-	// note that `api.DefaultConfig` execute `api.ReadEnvironment` and thus
-	// load also the all the Vault environment variables but `VAULT_TOKEN`
-	if c.Address != "" {
-		vaultConfig.Address = c.Address
+	client, err := c.Client()
+	if err != nil {
+		c.Ui.Error(err.Error())
+		return StateError
 	}
 
-	if c.client == nil {
-		client, err := vault.NewClient(c.Address)
-		if err != nil {
-			c.Ui.Error(err.Error())
-			return StateError
-		}
-		c.client = client
-	}
-
-	if c.Token != "" {
-		c.client.SetToken(c.Token)
-	}
-
-	activePolicies, err := c.client.Sys().ListPolicies()
+	activePolicies, err := client.Sys().ListPolicies()
 	if err != nil {
 		c.Ui.Error(fmt.Sprintf("error checking policies: %s", err))
 		return StateError
