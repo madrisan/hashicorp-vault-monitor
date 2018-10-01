@@ -9,12 +9,12 @@ TESTARGS = -v
 default: dev
 
 # bin generates the releasable binaries for HashiCorp Vault Monitor
-bin:
+bin: prep
 	@CGO_ENABLED=$(CGO_ENABLED) BUILD_TAGS='$(BUILD_TAGS)' sh -c "'$(CURDIR)/scripts/build.sh'"
 
 # dev creates binaries for testing HashiCorp Vault Monitor locally.
 # These are put into ./bin/ as well as $GOPATH/bin
-dev:
+dev: prep
 	@CGO_ENABLED=$(CGO_ENABLED) BUILD_TAGS='$(BUILD_TAGS)' VAULT_MONITOR_DEV_BUILD=1 sh -c "'$(CURDIR)/scripts/build.sh'"
 
 # bootstrap the build by downloading additional tools
@@ -33,8 +33,10 @@ fmtcheck:
 fmt:
 	gofmt -w $(GOFMT_FILES)
 
+prep: fmtcheck
+
 # test runs the unit tests and vets the code
-test:
+test: prep
 	@CGO_ENABLED=$(CGO_ENABLED) \
 	VAULT_ADDR= \
 	VAULT_TOKEN= \

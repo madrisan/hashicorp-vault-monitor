@@ -18,6 +18,11 @@ BUILD_TAGS="${BUILD_TAGS:-"hashicorp-vault-monitor"}"
 GIT_COMMIT="$(git rev-parse HEAD)"
 GIT_DIRTY="$(test -n "`git status --porcelain`" && echo "+CHANGES" || true)"
 
+# Determine the arch/os combos we're building for
+XC_ARCH=${XC_ARCH:-"amd64"}
+XC_OS=${XC_OS:-linux darwin windows freebsd openbsd netbsd solaris}
+XC_OSARCH=${XC_OSARCH:-"linux/amd64 linux/arm linux/arm64 darwin/amd64 windows/amd64 freebsd/amd64 freebsd/arm openbsd/amd64 openbsd/arm netbsd/amd64 solaris/amd64"}
+
 # If its dev mode, only build for ourself
 if [ "${VAULT_MONITOR_DEV_BUILD}x" != "x" ] && [ "${XC_OSARCH}x" == "x" ]; then
     XC_OS=$(go env GOOS)
@@ -58,7 +63,7 @@ IFS=$OLDIFS
 
 # Copy our OS/Arch to the bin/ directory
 DEV_PLATFORM=${DEV_PLATFORM:-"./pkg/$(go env GOOS)_$(go env GOARCH)"}
-for F in $(find ${DEV_PLATFORM} -mindepth 1 -maxdepth 1 -type f); do
+for F in $(find ${DEV_PLATFORM} -mindepth 1 -maxdepth 1 -type f >/dev/null 2>&1); do
     cp ${F} bin/
     cp ${F} ${MAIN_GOPATH}/bin/
 done
