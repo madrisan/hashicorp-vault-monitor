@@ -56,7 +56,7 @@ func GetVersion() *VersionInfo {
 
 // VersionNumber returns the current release version of HashiCorp Vault Monitor.
 func (c *VersionInfo) VersionNumber() string {
-	if Version == "unknown" && VersionPrerelease == "unknown" {
+	if c.Version == "unknown" && c.VersionPrerelease == "unknown" {
 		return "(version unknown)"
 	}
 
@@ -73,7 +73,7 @@ func (c *VersionInfo) VersionNumber() string {
 func (c *VersionInfo) FullVersionNumber(rev bool) string {
 	var versionString bytes.Buffer
 
-	if Version == "unknown" && VersionPrerelease == "unknown" {
+	if c.Version == "unknown" && c.VersionPrerelease == "unknown" {
 		return "HashiCorp Vault Monitor (version unknown)"
 	}
 
