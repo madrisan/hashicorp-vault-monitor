@@ -47,13 +47,13 @@ func TestGetCommand_Run(t *testing.T) {
 			"not_enough_args",
 			[]string{},
 			"Not enough arguments",
-			StateError,
+			StateUndefined,
 		},
 		{
 			"mandatory_field_arg",
 			[]string{"secret/test"},
 			"Missing '-field' flag or empty field set",
-			StateError,
+			StateUndefined,
 		},
 		{
 			"get_foo",
@@ -115,7 +115,7 @@ func TestGetCommand_Run(t *testing.T) {
 		ui, cmd := testGetCommand(t, "", client)
 
 		code := cmd.Run([]string{"-field", "foo", "secret/test"})
-		if exp := StateError; code != exp {
+		if exp := StateUndefined; code != exp {
 			t.Errorf("expected %d to be %d", code, exp)
 		}
 

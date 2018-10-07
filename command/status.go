@@ -46,6 +46,9 @@ Usage: hashicorp-vault-monitor status [options]
        Address of the Vault server. The default is https://127.0.0.1:8200. This
        can also be specified via the VAULT_ADDR environment variable.
 
+    -output=<string>
+       Specify an output format. Can be 'default' or 'nagios'.
+
   The exit code reflects the seal status:
 
       - %d - the secret has been successfully read
@@ -55,7 +58,7 @@ Usage: hashicorp-vault-monitor status [options]
   For a full list of examples, please see the online documentation.
 `
 	return fmt.Sprintf(helpText,
-		StateOk, StateCritical, StateError)
+		StateOk, StateCritical, StateUndefined)
 }
 
 // Run executes the `status` command with the given CLI instance and command-line arguments.
@@ -63,36 +66,49 @@ func (c *StatusCommand) Run(args []string) int {
 	cmdFlags := flag.NewFlagSet("status", flag.ContinueOnError)
 	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
+	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
+
+	retCode := StateUndefined
+
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
-		return StateError
+		return retCode
+	}
+
+	sprintf, err := c.Outputter()
+	if err != nil {
+		c.Ui.Error(err.Error())
+		return retCode
 	}
 
 	args = cmdFlags.Args()
 	if len(args) > 0 {
-		c.Ui.Error(fmt.Sprintf(
+		c.Ui.Error(sprintf(
+			retCode,
 			"Too many arguments (expected 0, got %d)", len(args)))
-		return StateError
+		return retCode
 	}
 
 	client, err := c.Client()
 	if err != nil {
-		c.Ui.Error(err.Error())
-		return StateError
+		c.Ui.Error(sprintf(retCode, err.Error()))
+		return retCode
 	}
 
 	status, err := client.Sys().SealStatus()
 	if err != nil {
-		c.Ui.Error(fmt.Sprintf("error checking seal status: %s", err))
-		return StateError
+		c.Ui.Error(sprintf(retCode, "error checking seal status: %s", err))
+		return retCode
 	}
 
 	if status.Sealed {
-		c.Ui.Output(fmt.Sprintf("Vault is sealed! Unseal Progress: %d/%d",
+		retCode = StateCritical
+		c.Ui.Output(sprintf(retCode, "Vault is sealed! Unseal Progress: %d/%d",
 			status.Progress, status.T))
-		return StateCritical
+		return retCode
 	}
 
-	c.Ui.Output("Vault is unsealed")
-	return StateOk
+	retCode = StateOk
+	c.Ui.Output(sprintf(retCode, "Vault is unsealed"))
+	return retCode
 }

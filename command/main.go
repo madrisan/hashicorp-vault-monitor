@@ -25,14 +25,6 @@ import (
 	"github.com/mitchellh/cli"
 )
 
-// Exit (Nagios compatible) return codes constants
-const (
-	StateOk int = iota
-	_
-	StateCritical
-	StateError
-)
-
 const (
 	addressDefault = "https://127.0.0.1:8200"
 	addressDescr   = "The address of the Vault server. " +
@@ -41,6 +33,8 @@ const (
 	tokenDefault = ""
 	tokenDescr   = "The token to access Vault. " +
 		"Overrides the " + api.EnvVaultToken + " environment variable if set"
+
+	outputFormatDescr = "Select an output format ('default' or 'nagios')"
 )
 
 // Run initializes a CLI instance and its command state engine.
@@ -67,6 +61,7 @@ func Run(args []string) int {
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
+					OutputFormat: "default",
 				},
 			}, nil
 		},
@@ -79,6 +74,7 @@ func Run(args []string) int {
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
+					OutputFormat: "default",
 				},
 			}, nil
 		},
@@ -91,6 +87,7 @@ func Run(args []string) int {
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
+					OutputFormat: "default",
 				},
 			}, nil
 		},
@@ -100,7 +97,7 @@ func Run(args []string) int {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error executing CLI: %s\n", err.Error())
-		return StateError
+		return StateUndefined
 	}
 
 	return exitStatus

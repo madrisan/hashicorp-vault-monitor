@@ -90,7 +90,7 @@ func TestPoliciesCommand_Run(t *testing.T) {
 			"not_enough_args",
 			[]string{},
 			"Not enough arguments",
-			StateError,
+			StateUndefined,
 		},
 		{
 			"default_policy",
@@ -164,7 +164,7 @@ func TestPoliciesCommand_Run(t *testing.T) {
 		cmd.client = client
 
 		code := cmd.Run([]string{"default"})
-		if exp := StateError; code != exp {
+		if exp := StateUndefined; code != exp {
 			t.Errorf("expected %d to be %d", code, exp)
 		}
 

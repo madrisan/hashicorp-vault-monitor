@@ -60,6 +60,9 @@ Usage: hashicorp-vault-monitor policies [options] POLICIES
        Specify a token for authentication. This can also be specified via the
        VAULT_TOKEN environment variable.
 
+    -output=<string>
+       Specify an output format. Can be 'default' or 'nagios'.
+
   The exit code reflects the status of the policies:
 
       - %d - the secret has been successfully read
@@ -69,7 +72,7 @@ Usage: hashicorp-vault-monitor policies [options] POLICIES
   For a full list of examples, please see the online documentation.
 `
 	return fmt.Sprintf(helpText,
-		StateOk, StateCritical, StateError)
+		StateOk, StateCritical, StateUndefined)
 }
 
 // Run executes the `policies` command with the given CLI instance and command-line arguments.
@@ -78,40 +81,52 @@ func (c *PoliciesCommand) Run(args []string) int {
 	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.Token, "token", tokenDefault, tokenDescr)
+	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
+
+	retCode := StateUndefined
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
-		return StateError
+		return retCode
+	}
+
+	sprintf, err := c.Outputter()
+	if err != nil {
+		c.Ui.Error(err.Error())
+		return retCode
 	}
 
 	args = cmdFlags.Args()
 	if len(args) < 1 {
-		c.Ui.Error(fmt.Sprintf(
+		c.Ui.Error(sprintf(
+			retCode,
 			"Not enough arguments (expected at list 1)"))
-		return StateError
+		return retCode
 	}
 
 	c.Policies = args[0:]
 
 	client, err := c.Client()
 	if err != nil {
-		c.Ui.Error(err.Error())
-		return StateError
+		c.Ui.Error(sprintf(retCode, err.Error()))
+		return retCode
 	}
 
 	activePolicies, err := client.Sys().ListPolicies()
 	if err != nil {
-		c.Ui.Error(fmt.Sprintf("error checking policies: %s", err))
-		return StateError
+		c.Ui.Error(sprintf(retCode, "error checking policies: %s", err))
+		return retCode
 	}
 
 	for _, policy := range c.Policies {
 		if !contains(activePolicies, policy) {
-			c.Ui.Error(fmt.Sprintf("no such Vault policy: %s", policy))
-			return StateCritical
+			retCode = StateCritical
+			c.Ui.Error(sprintf(retCode, "no such Vault policy: %s", policy))
+			return retCode
 		}
 	}
 
-	c.Ui.Output("all the policies are defined")
-	return StateOk
+	retCode = StateOk
+	c.Ui.Output(sprintf(retCode, "all the policies are defined"))
+	return retCode
 }

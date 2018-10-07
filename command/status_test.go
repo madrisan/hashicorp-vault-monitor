@@ -48,7 +48,7 @@ func TestStatusCommand_Run(t *testing.T) {
 			"too_many_args",
 			[]string{"arg1"},
 			"Too many arguments",
-			StateError,
+			StateUndefined,
 		},
 		{
 			"unsealed",
@@ -92,7 +92,7 @@ func TestStatusCommand_Run(t *testing.T) {
 		cmd.client = client
 
 		code := cmd.Run([]string{})
-		if exp := StateError; code != exp {
+		if exp := StateUndefined; code != exp {
 			t.Errorf("expected %d to be %d", code, exp)
 		}
 
