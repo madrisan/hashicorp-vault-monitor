@@ -24,25 +24,38 @@ import (
 // (Nagios compatible) return codes constants.
 const (
 	StateOk int = iota
-	_
+	StateWarning
 	StateCritical
 	StateUndefined
 )
 
-// outputter is an helper function that format the output messages.
-type outputter func(errCode int, format string, a ...interface{}) string
+// Outputter holds the output functions that are monitoring tool dependent.
+type Outputter struct {
+	Output func(format string, a ...interface{})
+	Error  func(format string, a ...interface{})
+}
 
-// OutputFormat returns the output helper function that is responsible
+// OutputHandle returns the output helper function that is responsible
 // of the command output formatting and return codes selection.
-func (c *BaseCommand) Outputter() (outputter, error) {
+func (c *BaseCommand) OutputHandle() (*Outputter, error) {
 	switch c.OutputFormat {
 	case "default":
-		return func(errCode int, format string, a ...interface{}) string {
-			return fmt.Sprintf(format, a...)
+		return &Outputter{
+			Output: func(format string, a ...interface{}) {
+				c.Ui.Output(fmt.Sprintf(format, a...))
+			},
+			Error: func(format string, a ...interface{}) {
+				c.Ui.Error(fmt.Sprintf(format, a...))
+			},
 		}, nil
 	case "nagios":
-		return func(errCode int, format string, a ...interface{}) string {
-			return fmt.Sprintf("check_vault: "+format, a...)
+		return &Outputter{
+			Output: func(format string, a ...interface{}) {
+				fmt.Printf("vault OK - "+format+"\n", a...)
+			},
+			Error: func(format string, a ...interface{}) {
+				fmt.Printf("vault CRITICAL - "+format+"\n", a...)
+			},
 		}, nil
 	default:
 		return nil, errors.New("Unknown outputter: " + c.OutputFormat)

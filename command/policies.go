@@ -83,50 +83,44 @@ func (c *PoliciesCommand) Run(args []string) int {
 	cmdFlags.StringVar(&c.Token, "token", tokenDefault, tokenDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
 
-	retCode := StateUndefined
-
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
-		return retCode
+		return StateUndefined
 	}
 
-	sprintf, err := c.Outputter()
+	out, err := c.OutputHandle()
 	if err != nil {
 		c.Ui.Error(err.Error())
-		return retCode
+		return StateUndefined
 	}
 
 	args = cmdFlags.Args()
 	if len(args) < 1 {
-		c.Ui.Error(sprintf(
-			retCode,
-			"Not enough arguments (expected at list 1)"))
-		return retCode
+		out.Error("Not enough arguments (expected at list 1)")
+		return StateUndefined
 	}
 
 	c.Policies = args[0:]
 
 	client, err := c.Client()
 	if err != nil {
-		c.Ui.Error(sprintf(retCode, err.Error()))
-		return retCode
+		out.Error(err.Error())
+		return StateUndefined
 	}
 
 	activePolicies, err := client.Sys().ListPolicies()
 	if err != nil {
-		c.Ui.Error(sprintf(retCode, "error checking policies: %s", err))
-		return retCode
+		out.Error("error checking policies: %s", err)
+		return StateUndefined
 	}
 
 	for _, policy := range c.Policies {
 		if !contains(activePolicies, policy) {
-			retCode = StateCritical
-			c.Ui.Error(sprintf(retCode, "no such Vault policy: %s", policy))
-			return retCode
+			out.Error("no such Vault policy: %s", policy)
+			return StateCritical
 		}
 	}
 
-	retCode = StateOk
-	c.Ui.Output(sprintf(retCode, "all the policies are defined"))
-	return retCode
+	out.Output("all the policies are defined")
+	return StateOk
 }

@@ -87,50 +87,48 @@ func (c *GetCommand) Run(args []string) int {
 	cmdFlags.StringVar(&c.Field, "field", "", getFieldDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
 
-	retCode := StateUndefined
-
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
-		return retCode
+		return StateUndefined
 	}
 
-	sprintf, err := c.Outputter()
+	out, err := c.OutputHandle()
 	if err != nil {
 		c.Ui.Error(err.Error())
-		return retCode
+		return StateUndefined
 	}
 
 	args = cmdFlags.Args()
 	switch {
 	case len(args) < 1:
-		c.Ui.Error(sprintf(retCode, "Not enough arguments (expected 1, got %d)", len(args)))
-		return retCode
+		out.Error("Not enough arguments (expected 1, got %d)", len(args))
+		return StateUndefined
 	case len(args) > 1:
-		c.Ui.Error(sprintf(retCode, "Too many arguments (expected 1, got %d)", len(args)))
-		return retCode
+		out.Error("Too many arguments (expected 1, got %d)", len(args))
+		return StateUndefined
 	}
 
 	c.Path = args[0]
 
 	if c.Field == "" {
-		c.Ui.Error(sprintf(retCode, "Missing '-field' flag or empty field set"))
-		return retCode
+		out.Error("Missing '-field' flag or empty field set")
+		return StateUndefined
 	}
 
 	client, err := c.Client()
 	if err != nil {
-		c.Ui.Error(sprintf(retCode, err.Error()))
-		return retCode
+		out.Error(err.Error())
+		return StateUndefined
 	}
 
 	secret, err := client.Logical().Read(c.Path)
 	if err != nil {
-		c.Ui.Error(sprintf(retCode, "error reading %s: %s", c.Path, err))
-		return retCode
+		out.Error("error reading %s: %s", c.Path, err)
+		return StateUndefined
 	}
 	if secret == nil {
-		c.Ui.Error(sprintf(retCode, "no data found at %s", c.Path))
-		return retCode
+		out.Error("no data found at %s", c.Path)
+		return StateUndefined
 	}
 
 	// secret.Data in KVv2 is an object of type map[string]interface{} with two entries:
@@ -142,21 +140,16 @@ func (c *GetCommand) Run(args []string) int {
 	if data, ok := secret.Data["data"]; ok && data != nil {
 		val := data.(map[string]interface{})[c.Field]
 		if val == nil {
-			c.Ui.Error(sprintf(
-				retCode,
-				"field '%s' not present in secret", c.Field))
-			return retCode
+			out.Error("field '%s' not present in secret", c.Field)
+			return StateUndefined
 		}
-		retCode = StateOk
-		c.Ui.Output(sprintf(retCode, "found value: '%v'", val))
-		return retCode
+		out.Output("found value: '%v'", val)
+		return StateOk
 	} else if val, ok := secret.Data[c.Field]; ok && val != nil {
-		retCode = StateOk
-		c.Ui.Output(sprintf(retCode, "found value: '%v'", val))
-		return retCode
+		out.Output("found value: '%v'", val)
+		return StateOk
 	}
 
-	retCode = StateCritical
-	c.Ui.Error(sprintf(retCode, "field '%s' not present in secret", c.Field))
-	return retCode
+	out.Error("field '%s' not present in secret", c.Field)
+	return StateCritical
 }

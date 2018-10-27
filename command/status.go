@@ -68,47 +68,41 @@ func (c *StatusCommand) Run(args []string) int {
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
 
-	retCode := StateUndefined
-
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
-		return retCode
+		return StateUndefined
 	}
 
-	sprintf, err := c.Outputter()
+	out, err := c.OutputHandle()
 	if err != nil {
 		c.Ui.Error(err.Error())
-		return retCode
+		return StateUndefined
 	}
 
 	args = cmdFlags.Args()
 	if len(args) > 0 {
-		c.Ui.Error(sprintf(
-			retCode,
-			"Too many arguments (expected 0, got %d)", len(args)))
-		return retCode
+		out.Error("Too many arguments (expected 0, got %d)", len(args))
+		return StateUndefined
 	}
 
 	client, err := c.Client()
 	if err != nil {
-		c.Ui.Error(sprintf(retCode, err.Error()))
-		return retCode
+		out.Error(err.Error())
+		return StateUndefined
 	}
 
 	status, err := client.Sys().SealStatus()
 	if err != nil {
-		c.Ui.Error(sprintf(retCode, "error checking seal status: %s", err))
-		return retCode
+		out.Error("error checking seal status: %s", err)
+		return StateUndefined
 	}
 
 	if status.Sealed {
-		retCode = StateCritical
-		c.Ui.Output(sprintf(retCode, "Vault is sealed! Unseal Progress: %d/%d",
-			status.Progress, status.T))
-		return retCode
+		out.Output("Vault is sealed! Unseal Progress: %d/%d",
+			status.Progress, status.T)
+		return StateCritical
 	}
 
-	retCode = StateOk
-	c.Ui.Output(sprintf(retCode, "Vault is unsealed"))
-	return retCode
+	out.Output("Vault is unsealed")
+	return StateOk
 }
