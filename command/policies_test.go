@@ -116,6 +116,36 @@ func TestPoliciesCommand_Run(t *testing.T) {
 			"no such Vault policy: nosuchpolicy",
 			StateCritical,
 		},
+		{
+			"nagios_not_enough_args",
+			[]string{"-output", "nagios"},
+			"Not enough arguments",
+			StateUndefined,
+		},
+		{
+			"nagios_default_policy",
+			[]string{"-output", "nagios", "default"},
+			"all the policies are defined",
+			StateOk,
+		},
+		{
+			"nagios_default_policies",
+			[]string{"-output", "nagios", "default", "root"},
+			"all the policies are defined",
+			StateOk,
+		},
+		{
+			"nagios_non_existent_policy",
+			[]string{"-output", "nagios", "nosuchpolicy"},
+			"no such Vault policy: nosuchpolicy",
+			StateCritical,
+		},
+		{
+			"nagiosçexisting_and_non_existing_policies",
+			[]string{"-output", "nagios", "default", "nosuchpolicy"},
+			"no such Vault policy: nosuchpolicy",
+			StateCritical,
+		},
 	}
 
 	t.Run("policies", func(t *testing.T) {

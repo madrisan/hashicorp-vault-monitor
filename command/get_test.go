@@ -61,6 +61,24 @@ func TestGetCommand_Run(t *testing.T) {
 			"bar",
 			StateOk,
 		},
+		{
+			"nagios_not_enough_args",
+			[]string{"-output", "nagios"},
+			"Not enough arguments",
+			StateUndefined,
+		},
+		{
+			"nagios_mandatory_field_arg",
+			[]string{"-output", "nagios", "secret/test"},
+			"Missing '-field' flag or empty field set",
+			StateUndefined,
+		},
+		{
+			"nagios_get_foo",
+			[]string{"-output", "nagios", "-field", "foo", "secret/test"},
+			"bar",
+			StateOk,
+		},
 	}
 
 	t.Run("get", func(t *testing.T) {

@@ -56,6 +56,18 @@ func TestStatusCommand_Run(t *testing.T) {
 			"Vault is unsealed",
 			StateOk,
 		},
+		{
+			"nagios_too_many_args",
+			[]string{"-output", "nagios", "arg1"},
+			"Too many arguments",
+			StateUndefined,
+		},
+		{
+			"nagios_unsealed",
+			[]string{"-output", "nagios"},
+			"Vault is unsealed",
+			StateOk,
+		},
 	}
 
 	t.Run("status", func(t *testing.T) {

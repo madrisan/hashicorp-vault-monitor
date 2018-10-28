@@ -51,10 +51,10 @@ func (c *BaseCommand) OutputHandle() (*Outputter, error) {
 	case "nagios":
 		return &Outputter{
 			Output: func(format string, a ...interface{}) {
-				fmt.Printf("vault OK - "+format+"\n", a...)
+				c.Ui.Output(fmt.Sprintf("vault OK - "+format, a...))
 			},
 			Error: func(format string, a ...interface{}) {
-				fmt.Printf("vault CRITICAL - "+format+"\n", a...)
+				c.Ui.Error(fmt.Sprintf("vault CRITICAL - "+format, a...))
 			},
 		}, nil
 	default:
