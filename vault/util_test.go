@@ -30,6 +30,11 @@ func TestVaultUtil(t *testing.T) {
 			shouldbe string
 		}{
 			{
+				"empty_string",
+				"",
+				"",
+			},
+			{
 				"leading_and_trailing_slash",
 				"/secret/data/mysecret/",
 				"secret/data/mysecret",
@@ -72,6 +77,11 @@ func TestVaultUtil(t *testing.T) {
 			shouldbe string
 		}{
 			{
+				"empty_string",
+				"",
+				"",
+			},
+			{
 				"leading_slash",
 				"/secret/data/mysecret",
 				"secret/data/mysecret",
@@ -103,6 +113,11 @@ func TestVaultUtil(t *testing.T) {
 			value    string
 			shouldbe string
 		}{
+			{
+				"empty_string",
+				"",
+				"",
+			},
 			{
 				"trailing_slash",
 				"secret/data/mysecret/",
