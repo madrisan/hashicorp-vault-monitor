@@ -71,12 +71,22 @@ $GOPATH/bin/hashicorp-vault-monitor status \
     -address=http://127.0.0.1:8200
 ```
 
+Add the output modifier `-output=nagios` if this tool is intented to
+be used with the Nagios monitoring.
+
+```
+$GOPATH/bin/hashicorp-vault-monitor status \
+    -output=nagios -address=http://127.0.0.1:8200
+```
+
 #### Monitoring the installed Vault policies
 ```
 $GOPATH/bin/hashicorp-vault-monitor policies \
     -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
     root saltstack
 ```
+
+Add `-output=nagios` as above if you monitor Vault with Nagios.
 
 #### Monitoring the access to the Vault KV data store
 
@@ -93,6 +103,8 @@ $GOPATH/bin/hashicorp-vault-monitor get \
     -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
     -field foo secret/data/mysecret
 ```
+
+The `-output=nagios` switch must be added as usual to enable the compliance with Nagios.
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
 your output.
