@@ -33,7 +33,7 @@ type BaseCommand struct {
 }
 
 // Client returs a new HTTP API Vault client for the given configuration
-// or the recommended default one, if no custom configurationis were provided.
+// or the recommended default one, if no custom configuration were provided.
 //
 // If the environment variable `VAULT_TOKEN` is present, the token will be
 // automatically added to the client.
