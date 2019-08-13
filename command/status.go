@@ -98,11 +98,13 @@ func (c *StatusCommand) Run(args []string) int {
 	}
 
 	if status.Sealed {
-		out.Output("Vault is sealed! Unseal Progress: %d/%d",
-			status.Progress, status.T)
+		out.Output("Vault (%s) is sealed! Unseal Progress: %d/%d",
+			status.ClusterName,
+			status.Progress,
+			status.T)
 		return StateCritical
 	}
 
-	out.Output("Vault is unsealed")
+	out.Output("Vault (%s) is unsealed", status.ClusterName)
 	return StateOk
 }
