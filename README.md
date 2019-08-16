@@ -79,6 +79,15 @@ $GOPATH/bin/hashicorp-vault-monitor status \
     -output=nagios -address=http://127.0.0.1:8200
 ```
 
+#### Monitoring the HA Cluster Status
+```
+$GOPATH/bin/hashicorp-vault-monitor hastatus \
+    -address=http://127.0.0.1:8200
+```
+
+Add the output modifier `-output=nagios` if this tool is intented to
+be used with the Nagios monitoring.
+
 #### Monitoring the installed Vault policies
 ```
 $GOPATH/bin/hashicorp-vault-monitor policies \

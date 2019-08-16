@@ -65,6 +65,19 @@ func Run(args []string) int {
 				},
 			}, nil
 		},
+		"hastatus": func() (cli.Command, error) {
+			return &HAStatusCommand{
+				BaseCommand: &BaseCommand{
+					Ui: &cli.ColoredUi{
+						Ui:          ui,
+						ErrorColor:  cli.UiColorRed,
+						OutputColor: cli.UiColorGreen,
+						WarnColor:   cli.UiColorYellow,
+					},
+					OutputFormat: "default",
+				},
+			}, nil
+		},
 		"policies": func() (cli.Command, error) {
 			return &PoliciesCommand{
 				BaseCommand: &BaseCommand{
