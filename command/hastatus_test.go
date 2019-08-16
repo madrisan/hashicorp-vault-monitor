@@ -1,5 +1,5 @@
 /*
-  Copyright 2018 Davide Madrisan <davide.madrisan@gmail.com>
+  Copyright 2019 Davide Madrisan <davide.madrisan@gmail.com>
 
   Licensed under the Mozilla Public License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -26,16 +26,16 @@ import (
 	"github.com/mitchellh/cli"
 )
 
-func testStatusCommand(t *testing.T) (*cli.MockUi, *StatusCommand) {
+func testHAStatusCommand(t *testing.T) (*cli.MockUi, *HAStatusCommand) {
 	ui := cli.NewMockUi()
-	return ui, &StatusCommand{
+	return ui, &HAStatusCommand{
 		BaseCommand: &BaseCommand{
 			Ui: ui,
 		},
 	}
 }
 
-func TestStatusCommand_Run(t *testing.T) {
+func TestHAStatusCommand_Run(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -51,9 +51,9 @@ func TestStatusCommand_Run(t *testing.T) {
 			StateUndefined,
 		},
 		{
-			"unsealed",
+			"ha_enabled",
 			[]string{},
-			" is unsealed",
+			" is enabled, Active Node",
 			StateOk,
 		},
 		{
@@ -63,9 +63,9 @@ func TestStatusCommand_Run(t *testing.T) {
 			StateUndefined,
 		},
 		{
-			"nagios_unsealed",
+			"nagios_ha_enabled",
 			[]string{"-output", "nagios"},
-			" is unsealed",
+			" is enabled, Active Node",
 			StateOk,
 		},
 	}
@@ -78,7 +78,7 @@ func TestStatusCommand_Run(t *testing.T) {
 				client, _, closer := testVaultServerUnseal(t)
 				defer closer()
 
-				ui, cmd := testStatusCommand(t)
+				ui, cmd := testHAStatusCommand(t)
 				cmd.client = client
 
 				code := cmd.Run(tc.args)
@@ -100,7 +100,7 @@ func TestStatusCommand_Run(t *testing.T) {
 		client, closer := testVaultServerBad(t)
 		defer closer()
 
-		ui, cmd := testStatusCommand(t)
+		ui, cmd := testHAStatusCommand(t)
 		cmd.client = client
 
 		code := cmd.Run([]string{})

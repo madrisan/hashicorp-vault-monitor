@@ -141,7 +141,7 @@ func TestPoliciesCommand_Run(t *testing.T) {
 			StateCritical,
 		},
 		{
-			"nagiosçexisting_and_non_existing_policies",
+			"nagios_existing_and_non_existing_policies",
 			[]string{"-output", "nagios", "default", "nosuchpolicy"},
 			"no such Vault policy: nosuchpolicy",
 			StateCritical,
