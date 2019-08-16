@@ -18,6 +18,20 @@ make -C $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor bootstrap dev
 $GOPATH/bin/hashicorp-vault-monitor -version
 ```
 
+#### Run the Test Suite (for developers)
+
+Just run in the top source folder:
+```
+make test
+```
+
+#### Generate Test Coverage Statistics (for developers)
+
+Go to the top source folder and enter the command:
+```
+make cover
+```
+
 ## How to test the monitoring binary
 
 If you do not have a running Vault server, you can run a dockerized version of
@@ -85,8 +99,7 @@ $GOPATH/bin/hashicorp-vault-monitor hastatus \
     -address=http://127.0.0.1:8200
 ```
 
-Add the output modifier `-output=nagios` if this tool is intented to
-be used with the Nagios monitoring.
+Add -output=nagios as above if you monitor Vault with Nagios.
 
 #### Monitoring the installed Vault policies
 ```
@@ -95,7 +108,7 @@ $GOPATH/bin/hashicorp-vault-monitor policies \
     root saltstack
 ```
 
-Add `-output=nagios` as above if you monitor Vault with Nagios.
+Add the flag `-output=nagios` if you monitor Vault with Nagios.
 
 #### Monitoring the access to the Vault KV data store
 
@@ -113,7 +126,7 @@ $GOPATH/bin/hashicorp-vault-monitor get \
     -field foo secret/data/mysecret
 ```
 
-The `-output=nagios` switch must be added as usual to enable the compliance with Nagios.
+The `-output=nagios` switch must be added as usual to make the output compliance with Nagios.
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
 your output.
