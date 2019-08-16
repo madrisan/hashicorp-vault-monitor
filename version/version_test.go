@@ -22,10 +22,10 @@ func TestVersion(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name             string
-		verinfo          VersionInfo
-		ver_shouldbe     string
-		fullver_shouldbe string
+		name            string
+		verInfo         VersionInfo
+		verShouldBe     string
+		fullVerShouldBe string
 	}{
 		{
 			"all_members",
@@ -52,10 +52,10 @@ func TestVersion(t *testing.T) {
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				v := tc.verinfo.VersionNumber()
-				if v != tc.ver_shouldbe {
-					t.Error("For", tc.verinfo,
-						"expected", tc.ver_shouldbe, "got", v,
+				v := tc.verInfo.VersionNumber()
+				if v != tc.verShouldBe {
+					t.Error("For", tc.verInfo,
+						"expected", tc.verShouldBe, "got", v,
 					)
 				}
 			})
@@ -67,10 +67,10 @@ func TestVersion(t *testing.T) {
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				v := tc.verinfo.FullVersionNumber(true)
-				if v != tc.fullver_shouldbe {
-					t.Error("For", tc.verinfo,
-						"expected", tc.fullver_shouldbe, "got", v,
+				v := tc.verInfo.FullVersionNumber(true)
+				if v != tc.fullVerShouldBe {
+					t.Error("For", tc.verInfo,
+						"expected", tc.fullVerShouldBe, "got", v,
 					)
 				}
 			})
