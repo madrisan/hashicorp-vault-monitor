@@ -70,7 +70,7 @@ Usage: hashicorp-vault-monitor get [options] -field FIELD KEY
 
       - %d - the secret has been successfully read
       - %d - the secret cannot be found of read
-      - %d - error
+      - %d - an error occurred
 
   For a full list of examples, please see the online documentation.
 `

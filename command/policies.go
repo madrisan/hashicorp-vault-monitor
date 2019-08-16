@@ -65,9 +65,9 @@ Usage: hashicorp-vault-monitor policies [options] POLICIES
 
   The exit code reflects the status of the policies:
 
-      - %d - the secret has been successfully read
-      - %d - the secret cannot be found of read
-      - %d - error
+      - %d - the given policies are configured
+      - %d - at least one policy was not found
+      - %d - an error occurred
 
   For a full list of examples, please see the online documentation.
 `

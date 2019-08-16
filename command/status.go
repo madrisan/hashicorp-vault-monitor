@@ -51,9 +51,9 @@ Usage: hashicorp-vault-monitor status [options]
 
   The exit code reflects the seal status:
 
-      - %d - the secret has been successfully read
-      - %d - the secret cannot be found of read
-      - %d - error
+      - %d - the vault node is unsealed
+      - %d - the vault node is sealed
+      - %d - an error occurred
 
   For a full list of examples, please see the online documentation.
 `
