@@ -147,10 +147,10 @@ The `-output=nagios` switch must be added as usual to make the output compliance
 ###### Example of output
 
     # default output message
-    found value: 'this-is-a-secret-for-monitoring-vault'
+    found a value for the key foo: 'this-is-a-secret-for-checking-vault'
     
     # with the '-output=nagios' switch
-    vault OK - found value: 'this-is-a-secret-for-monitoring-vault'
+    vault OK - found a value for the key foo: 'this-is-a-secret-for-checking-vault'
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
 your output.

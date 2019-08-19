@@ -143,7 +143,7 @@ func (c *GetCommand) Run(args []string) int {
 			out.Error("field '%s' not present in secret", c.Field)
 			return StateUndefined
 		}
-		out.Output("found value: '%v'", val)
+		out.Output("found a value for the key %s: '%v'", c.Field, val)
 		return StateOk
 	} else if val, ok := secret.Data[c.Field]; ok && val != nil {
 		out.Output("found value: '%v'", val)
