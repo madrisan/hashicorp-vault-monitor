@@ -93,6 +93,14 @@ $GOPATH/bin/hashicorp-vault-monitor status \
     -output=nagios -address=http://127.0.0.1:8200
 ```
 
+###### Example of output
+
+    # default output message
+    Vault (vault-cluster-50531563) is unsealed
+    
+    # with the '-output=nagios' switch
+    vault OK - Vault (vault-cluster-50531563) is unsealed
+
 #### Monitoring the HA Cluster Status
 ```
 $GOPATH/bin/hashicorp-vault-monitor hastatus \
@@ -100,6 +108,14 @@ $GOPATH/bin/hashicorp-vault-monitor hastatus \
 ```
 
 Add -output=nagios as above if you monitor Vault with Nagios.
+
+###### Example of output
+
+    # default output message
+    Vault HA (vault-cluster-50531563) is enabled, Standby Node (Active Node Address: https://192.168.1.8:8200)
+    
+    # with the '-output=nagios' switch
+    vault OK - Vault HA (vault-cluster-50531563) is enabled, Standby Node (Active Node Address: https://192.168.1.8:8200)
 
 #### Monitoring the installed Vault policies
 ```
@@ -127,6 +143,14 @@ $GOPATH/bin/hashicorp-vault-monitor get \
 ```
 
 The `-output=nagios` switch must be added as usual to make the output compliance with Nagios.
+
+###### Example of output
+
+    # default output message
+    found value: 'this-is-a-secret-for-monitoring-vault'
+    
+    # with the '-output=nagios' switch
+    vault OK - found value: 'this-is-a-secret-for-monitoring-vault'
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
 your output.
