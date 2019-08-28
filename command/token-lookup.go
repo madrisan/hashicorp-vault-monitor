@@ -121,20 +121,19 @@ func (c *TokenLookupCommand) Run(args []string) int {
 
 	t, err := time.Parse(time.RFC3339Nano, expireTimeStr)
 	delta := time.Until(t)
-	deltaHours := delta.Hours()
 
 	pluginMessage := ""
 	retCode := StateOk
 
-	if deltaHours > 0 {
-		pluginMessage = fmt.Sprintf("The token will expire the %s, in %s",
-			expireTimeStr,
-			delta.String())
-		if deltaHours < CriticalExpirationHours {
+	if delta > 0 {
+		pluginMessage = fmt.Sprintf("The token will expire on %s (%s left)",
+			t.Format(time.RFC1123),
+			delta.Truncate(time.Second).String())
+		if delta.Hours() < CriticalExpirationHours {
 			out.Critical(pluginMessage)
 			retCode = StateCritical
 
-		} else if deltaHours < WarningExpirationHours {
+		} else if delta.Hours() < WarningExpirationHours {
 			out.Warning(pluginMessage)
 			retCode = StateWarning
 		} else {
