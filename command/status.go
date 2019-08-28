@@ -81,24 +81,24 @@ func (c *StatusCommand) Run(args []string) int {
 
 	args = cmdFlags.Args()
 	if len(args) > 0 {
-		out.Error("Too many arguments (expected 0, got %d)", len(args))
+		out.Undefined("Too many arguments (expected 0, got %d)", len(args))
 		return StateUndefined
 	}
 
 	client, err := c.Client()
 	if err != nil {
-		out.Error(err.Error())
+		out.Undefined(err.Error())
 		return StateUndefined
 	}
 
 	status, err := client.Sys().SealStatus()
 	if err != nil {
-		out.Error("error checking seal status: %s", err)
+		out.Undefined("error checking seal status: %s", err)
 		return StateUndefined
 	}
 
 	if status.Sealed {
-		out.Error("Vault (%s) is sealed! Unseal Progress: %d/%d",
+		out.Critical("Vault (%s) is sealed! Unseal Progress: %d/%d",
 			status.ClusterName,
 			status.Progress,
 			status.T)

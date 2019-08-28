@@ -31,8 +31,10 @@ const (
 
 // Outputter holds the output functions that are monitoring tool dependent.
 type Outputter struct {
-	Output func(format string, a ...interface{})
-	Error  func(format string, a ...interface{})
+	Output    func(format string, a ...interface{})
+	Warning   func(format string, a ...interface{})
+	Critical  func(format string, a ...interface{})
+	Undefined func(format string, a ...interface{})
 }
 
 // OutputHandle returns the output helper function that is responsible
@@ -44,7 +46,13 @@ func (c *BaseCommand) OutputHandle() (*Outputter, error) {
 			Output: func(format string, a ...interface{}) {
 				c.Ui.Output(fmt.Sprintf(format, a...))
 			},
-			Error: func(format string, a ...interface{}) {
+			Warning: func(format string, a ...interface{}) {
+				c.Ui.Warn(fmt.Sprintf(format, a...))
+			},
+			Critical: func(format string, a ...interface{}) {
+				c.Ui.Error(fmt.Sprintf(format, a...))
+			},
+			Undefined: func(format string, a ...interface{}) {
 				c.Ui.Error(fmt.Sprintf(format, a...))
 			},
 		}, nil
@@ -53,8 +61,14 @@ func (c *BaseCommand) OutputHandle() (*Outputter, error) {
 			Output: func(format string, a ...interface{}) {
 				c.Ui.Output(fmt.Sprintf("vault OK - "+format, a...))
 			},
-			Error: func(format string, a ...interface{}) {
+			Warning: func(format string, a ...interface{}) {
+				c.Ui.Warn(fmt.Sprintf("vault WARNING - "+format, a...))
+			},
+			Critical: func(format string, a ...interface{}) {
 				c.Ui.Error(fmt.Sprintf("vault CRITICAL - "+format, a...))
+			},
+			Undefined: func(format string, a ...interface{}) {
+				c.Ui.Error(fmt.Sprintf("vault UNDEFINED - "+format, a...))
 			},
 		}, nil
 	default:

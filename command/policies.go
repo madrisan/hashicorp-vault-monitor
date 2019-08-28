@@ -96,7 +96,7 @@ func (c *PoliciesCommand) Run(args []string) int {
 
 	args = cmdFlags.Args()
 	if len(args) < 1 {
-		out.Error("Not enough arguments (expected at list 1)")
+		out.Undefined("Not enough arguments (expected at list 1)")
 		return StateUndefined
 	}
 
@@ -104,19 +104,19 @@ func (c *PoliciesCommand) Run(args []string) int {
 
 	client, err := c.Client()
 	if err != nil {
-		out.Error(err.Error())
+		out.Undefined(err.Error())
 		return StateUndefined
 	}
 
 	activePolicies, err := client.Sys().ListPolicies()
 	if err != nil {
-		out.Error("error checking policies: %s", err)
+		out.Undefined("error checking policies: %s", err)
 		return StateUndefined
 	}
 
 	for _, policy := range c.Policies {
 		if !contains(activePolicies, policy) {
-			out.Error("no such Vault policy: %s", policy)
+			out.Critical("no such Vault policy: %s", policy)
 			return StateCritical
 		}
 	}

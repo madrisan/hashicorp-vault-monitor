@@ -82,24 +82,24 @@ func (c *HAStatusCommand) Run(args []string) int {
 
 	args = cmdFlags.Args()
 	if len(args) > 0 {
-		out.Error("Too many arguments (expected 0, got %d)", len(args))
+		out.Undefined("Too many arguments (expected 0, got %d)", len(args))
 		return StateUndefined
 	}
 
 	client, err := c.Client()
 	if err != nil {
-		out.Error(err.Error())
+		out.Undefined(err.Error())
 		return StateUndefined
 	}
 
 	status, err := client.Sys().SealStatus()
 	if err != nil {
-		out.Error("error checking seal status: %s", err)
+		out.Undefined("error checking seal status: %s", err)
 		return StateUndefined
 	}
 
 	if status.Sealed {
-		out.Error("Vault (%s) is sealed! Unseal Progress: %d/%d",
+		out.Critical("Vault (%s) is sealed! Unseal Progress: %d/%d",
 			status.ClusterName,
 			status.Progress,
 			status.T)
@@ -108,12 +108,12 @@ func (c *HAStatusCommand) Run(args []string) int {
 
 	leaderStatus, err := client.Sys().Leader()
 	if err != nil {
-		out.Error(fmt.Sprintf("Error checking leader status: %s", err))
+		out.Critical("Error checking leader status: %s", err)
 		return StateCritical
 	}
 
 	if !leaderStatus.HAEnabled {
-		out.Error("Vault HA (%s) is not enabled", status.ClusterName)
+		out.Critical("Vault HA (%s) is not enabled", status.ClusterName)
 		return StateCritical
 	}
 

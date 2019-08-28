@@ -89,13 +89,13 @@ func (c *TokenLookupCommand) Run(args []string) int {
 
 	args = cmdFlags.Args()
 	if len(args) > 0 {
-		out.Error("Too many arguments (expected 0, got %d)", len(args))
+		out.Undefined("Too many arguments (expected 0, got %d)", len(args))
 		return StateUndefined
 	}
 
 	client, err := c.Client()
 	if err != nil {
-		out.Error(err.Error())
+		out.Undefined(err.Error())
 		return StateUndefined
 	}
 
@@ -103,19 +103,19 @@ func (c *TokenLookupCommand) Run(args []string) int {
 
 	s, err := ta.LookupSelf()
 	if err != nil {
-		out.Error(err.Error())
+		out.Undefined(err.Error())
 		return StateUndefined
 	}
 
 	if s.Data == nil || s.Data["expire_time"] == nil {
-		out.Error("Cannot get the expire time of the Vault token")
+		out.Undefined("Cannot get the expire time of the Vault token")
 		return StateUndefined
 	}
 
 	expireTimeRaw := s.Data["expire_time"]
 	expireTimeStr, ok := expireTimeRaw.(string)
 	if !ok {
-		out.Error("Could not convert expire_time to a string")
+		out.Undefined("Could not convert expire_time to a string")
 		return StateUndefined
 	}
 
@@ -125,24 +125,26 @@ func (c *TokenLookupCommand) Run(args []string) int {
 
 	pluginMessage := ""
 	retCode := StateOk
-	outStream := out.Output
 
 	if deltaHours > 0 {
 		pluginMessage = fmt.Sprintf("The token will expire the %s, in %s",
 			expireTimeStr,
 			delta.String())
 		if deltaHours < CriticalExpirationHours {
+			out.Critical(pluginMessage)
 			retCode = StateCritical
-			outStream = out.Error
+
 		} else if deltaHours < WarningExpirationHours {
+			out.Warning(pluginMessage)
 			retCode = StateWarning
+		} else {
+			out.Output(pluginMessage)
 		}
+
 	} else {
-		pluginMessage = fmt.Sprintf("The token has expired!")
+		out.Critical("The token has expired!")
 		retCode = StateCritical
-		outStream = out.Error
 	}
 
-	outStream(pluginMessage)
 	return retCode
 }

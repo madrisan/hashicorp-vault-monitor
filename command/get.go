@@ -101,33 +101,33 @@ func (c *GetCommand) Run(args []string) int {
 	args = cmdFlags.Args()
 	switch {
 	case len(args) < 1:
-		out.Error("Not enough arguments (expected 1, got %d)", len(args))
+		out.Undefined("Not enough arguments (expected 1, got %d)", len(args))
 		return StateUndefined
 	case len(args) > 1:
-		out.Error("Too many arguments (expected 1, got %d)", len(args))
+		out.Undefined("Too many arguments (expected 1, got %d)", len(args))
 		return StateUndefined
 	}
 
 	c.Path = args[0]
 
 	if c.Field == "" {
-		out.Error("Missing '-field' flag or empty field set")
+		out.Undefined("Missing '-field' flag or empty field set")
 		return StateUndefined
 	}
 
 	client, err := c.Client()
 	if err != nil {
-		out.Error(err.Error())
+		out.Undefined(err.Error())
 		return StateUndefined
 	}
 
 	secret, err := client.Logical().Read(c.Path)
 	if err != nil {
-		out.Error("error reading %s: %s", c.Path, err)
+		out.Undefined("error reading %s: %s", c.Path, err)
 		return StateUndefined
 	}
 	if secret == nil {
-		out.Error("no data found at %s", c.Path)
+		out.Undefined("no data found at %s", c.Path)
 		return StateUndefined
 	}
 
@@ -140,7 +140,7 @@ func (c *GetCommand) Run(args []string) int {
 	if data, ok := secret.Data["data"]; ok && data != nil {
 		val := data.(map[string]interface{})[c.Field]
 		if val == nil {
-			out.Error("field '%s' not present in secret", c.Field)
+			out.Undefined("field '%s' not present in secret", c.Field)
 			return StateUndefined
 		}
 		out.Output("found a value for the key %s: '%v'", c.Field, val)
@@ -150,6 +150,6 @@ func (c *GetCommand) Run(args []string) int {
 		return StateOk
 	}
 
-	out.Error("field '%s' not present in secret", c.Field)
+	out.Critical("field '%s' not present in secret", c.Field)
 	return StateCritical
 }
