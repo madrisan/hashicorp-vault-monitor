@@ -104,6 +104,19 @@ func Run(args []string) int {
 				},
 			}, nil
 		},
+		"token-lookup": func() (cli.Command, error) {
+			return &TokenLookupCommand{
+				BaseCommand: &BaseCommand{
+					Ui: &cli.ColoredUi{
+						Ui:          ui,
+						ErrorColor:  cli.UiColorRed,
+						OutputColor: cli.UiColorGreen,
+						WarnColor:   cli.UiColorYellow,
+					},
+					OutputFormat: "default",
+				},
+			}, nil
+		},
 	}
 
 	exitStatus, err := c.Run()
