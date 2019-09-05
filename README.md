@@ -107,7 +107,7 @@ $GOPATH/bin/hashicorp-vault-monitor hastatus \
     -address=http://127.0.0.1:8200
 ```
 
-Add -output=nagios as above if you monitor Vault with Nagios.
+Add `-output=nagios` as above if you monitor Vault with Nagios.
 
 ###### Example of output
 
@@ -151,6 +151,22 @@ The `-output=nagios` switch must be added as usual to make the output compliance
     
     # with the '-output=nagios' switch
     vault OK - found a value for the key foo: 'this-is-a-secret-for-checking-vault'
+
+#### Monitoring the expiration date of the Vault token
+```
+$GOPATH/bin/hashicorp-vault-monitor token-lookup \
+    -address=http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+```
+
+As usual, add `-output=nagios` to get an output compliant with the Nagios specifications.
+
+###### Example of output
+
+    # default output message
+    The token will expire on Mon, 07 Oct 2019 14:25:06 UTC (767h55m35s left)
+    
+    # with the '-output=nagios' switch
+    vault OK - The token will expire on Mon, 07 Oct 2019 14:25:06 UTC (767h55m35s left)
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
 your output.
