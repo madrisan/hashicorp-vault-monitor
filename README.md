@@ -155,8 +155,11 @@ The `-output=nagios` switch must be added as usual to make the output compliance
 #### Monitoring the expiration date of the Vault token
 ```
 $GOPATH/bin/hashicorp-vault-monitor token-lookup \
-    -address=http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8"
+    -address=http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -warning=120h -critical=72h
 ```
+The `-warning` and `-critical` switches are optional and default to *168h* (7 days)
+and *72h* (3 days) respectively.
 
 As usual, add `-output=nagios` to get an output compliant with the Nagios specifications.
 

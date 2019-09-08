@@ -34,6 +34,9 @@ const (
 	tokenDescr   = "The token to access Vault. " +
 		"Overrides the " + api.EnvVaultToken + " environment variable if set"
 
+	warningDescr  = "Warning threshold (default: %s)"
+	criticalDescr = "Critical threshold (default: %s)"
+
 	outputFormatDescr = "Select an output format ('default' or 'nagios')"
 )
 

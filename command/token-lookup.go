@@ -22,9 +22,17 @@ import (
 	"time"
 )
 
+// Thresholds in hours for warning and critical status.
+const (
+	DefaultWarningExpiration  = "168h"
+	DefaultCriticalExpiration = "72h"
+)
+
 // TokenLookupCommand is a CLI Command that holds the attributes of the command `token-lookup`.
 type TokenLookupCommand struct {
 	*BaseCommand
+	WarningThreshold  string
+	CriticalThreshold string
 }
 
 // Synopsis returns a short synopsis of the `token-lookup` command.
@@ -50,24 +58,26 @@ Usage: hashicorp-vault-monitor token-lookup [options]
     -output=<string>
        Specify an output format. Can be 'default' or 'nagios'.
 
+    -warning=<string>
+       Warning threshold in days (default: %s).
+
+    -critical=<string>
+       Critical threshold in days (default: %s).
+
   The exit code reflects the token expiration time:
 
       - %d - the token is usable
-      - %d - the token will expire in less than a week
-      - %d - the token will expire in less than 3 days
+      - %d - the token will expire in less than the warning threshold
+      - %d - the token will expire in less than the critical threshold
       - %d - an error occurred
 
   For a full list of examples, please see the online documentation.
 `
 	return fmt.Sprintf(helpText,
+		DefaultWarningExpiration,
+		DefaultCriticalExpiration,
 		StateOk, StateWarning, StateCritical, StateUndefined)
 }
-
-// Thresholds in hours for warning and critical status.
-const (
-	WarningExpirationHours  = 7 * 24
-	CriticalExpirationHours = 3 * 24
-)
 
 // Run executes the `token-lookup` command with the given CLI instance and command-line arguments.
 func (c *TokenLookupCommand) Run(args []string) int {
@@ -75,6 +85,12 @@ func (c *TokenLookupCommand) Run(args []string) int {
 	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
+	cmdFlags.StringVar(&c.WarningThreshold, "warning",
+		DefaultWarningExpiration,
+		fmt.Sprintf(warningDescr, DefaultWarningExpiration))
+	cmdFlags.StringVar(&c.CriticalThreshold, "critical",
+		DefaultCriticalExpiration,
+		fmt.Sprintf(criticalDescr, DefaultCriticalExpiration))
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
@@ -90,6 +106,18 @@ func (c *TokenLookupCommand) Run(args []string) int {
 	args = cmdFlags.Args()
 	if len(args) > 0 {
 		out.Undefined("Too many arguments (expected 0, got %d)", len(args))
+		return StateUndefined
+	}
+
+	warningThreshold, err := time.ParseDuration(c.WarningThreshold)
+	if err != nil {
+		out.Undefined(err.Error())
+		return StateUndefined
+	}
+
+	criticalThreshold, err := time.ParseDuration(c.CriticalThreshold)
+	if err != nil {
+		out.Undefined(err.Error())
 		return StateUndefined
 	}
 
@@ -129,11 +157,10 @@ func (c *TokenLookupCommand) Run(args []string) int {
 		pluginMessage = fmt.Sprintf("The token will expire on %s (%s left)",
 			t.Format(time.RFC1123),
 			delta.Truncate(time.Second).String())
-		if delta.Hours() < CriticalExpirationHours {
+		if delta < criticalThreshold {
 			out.Critical(pluginMessage)
 			retCode = StateCritical
-
-		} else if delta.Hours() < WarningExpirationHours {
+		} else if delta < warningThreshold {
 			out.Warning(pluginMessage)
 			retCode = StateWarning
 		} else {
