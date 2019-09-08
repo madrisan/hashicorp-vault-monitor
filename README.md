@@ -20,7 +20,7 @@ $GOPATH/bin/hashicorp-vault-monitor -version
 
 #### Run the Test Suite (for developers)
 
-Just run in the top source folder:
+Just run in the top source folder (`$GOPATH/src/github.com/madrisan/hashicorp-vault-monitor`):
 ```
 make test
 ```
