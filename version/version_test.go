@@ -16,7 +16,11 @@
 
 package version
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/go-test/deep"
+)
 
 func TestVersion(t *testing.T) {
 	t.Parallel()
@@ -46,6 +50,22 @@ func TestVersion(t *testing.T) {
 			"HashiCorp Vault Monitor (version unknown)",
 		},
 	}
+
+	t.Run("get_version", func(t *testing.T) {
+		t.Run("plain", func(t *testing.T) {
+			v := GetVersion()
+			e := &VersionInfo{
+				"",
+				Version,
+				VersionPrerelease,
+			}
+			if deep.Equal(v, e) != nil {
+				t.Error("For get_version",
+					"expected", e, "got", v,
+				)
+			}
+		})
+	})
 
 	t.Run("version_number", func(t *testing.T) {
 		t.Parallel()

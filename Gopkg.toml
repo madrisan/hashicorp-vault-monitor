@@ -11,6 +11,10 @@
   name = "github.com/mitchellh/cli"
   version = "1.0.0"
 
+[[constraint]]
+  name = "github.com/go-test/deep"
+  version = "v1.0.3"
+
 [prune]
   go-tests = true
   unused-packages = true
