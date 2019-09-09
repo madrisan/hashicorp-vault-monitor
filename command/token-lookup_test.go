@@ -1,5 +1,5 @@
 /*
-  Copyright 2018 Davide Madrisan <davide.madrisan@gmail.com>
+  Copyright 2019 Davide Madrisan <davide.madrisan@gmail.com>
 
   Licensed under the Mozilla Public License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -26,16 +26,16 @@ import (
 	"github.com/mitchellh/cli"
 )
 
-func testStatusCommand(t *testing.T) (*cli.MockUi, *StatusCommand) {
+func testTokenLookupCommand(t *testing.T) (*cli.MockUi, *TokenLookupCommand) {
 	ui := cli.NewMockUi()
-	return ui, &StatusCommand{
+	return ui, &TokenLookupCommand{
 		BaseCommand: &BaseCommand{
 			Ui: ui,
 		},
 	}
 }
 
-func TestStatusCommand_Run(t *testing.T) {
+func TestTokenLookupCommand_Run(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -47,7 +47,7 @@ func TestStatusCommand_Run(t *testing.T) {
 		{
 			"help_message",
 			[]string{"-help"},
-			"Usage: hashicorp-vault-monitor status [options]",
+			"Usage: hashicorp-vault-monitor token-lookup [options]",
 			StateUndefined,
 		},
 		{
@@ -56,27 +56,23 @@ func TestStatusCommand_Run(t *testing.T) {
 			"Too many arguments",
 			StateUndefined,
 		},
-		{
-			"unsealed",
-			[]string{},
-			" is unsealed",
-			StateOk,
-		},
+		//{
+		//	"token_expiration_ok",
+		//	[]string{},
+		//	// FIXME: we get "Cannot get the expire time of the Vault token"
+		//	// because s.Data["expire_time"] == nil
+		//	"FIXME",
+		//	StateUndefined,
+		//},
 		{
 			"nagios_too_many_args",
 			[]string{"-output", "nagios", "arg1"},
 			"Too many arguments",
 			StateUndefined,
 		},
-		{
-			"nagios_unsealed",
-			[]string{"-output", "nagios"},
-			" is unsealed",
-			StateOk,
-		},
 	}
 
-	t.Run("status", func(t *testing.T) {
+	t.Run("usage", func(t *testing.T) {
 		t.Parallel()
 
 		for _, tc := range cases {
@@ -84,17 +80,22 @@ func TestStatusCommand_Run(t *testing.T) {
 				client, _, closer := testVaultServerUnseal(t)
 				defer closer()
 
-				ui, cmd := testStatusCommand(t)
-				cmd.client = client
+				token := client.Token()
+				if token == "" {
+					t.Errorf("cannot get the current Vault token")
+				} else {
+					ui, cmd := testTokenLookupCommand(t)
+					cmd.client = client
 
-				code := cmd.Run(tc.args)
-				if code != tc.code {
-					t.Errorf("expected %d to be %d", code, tc.code)
-				}
+					code := cmd.Run(tc.args)
+					if code != tc.code {
+						t.Errorf("expected %d to be %d", code, tc.code)
+					}
 
-				combined := ui.OutputWriter.String() + ui.ErrorWriter.String()
-				if !strings.Contains(combined, tc.out) {
-					t.Errorf("expected %q to contain %q", combined, tc.out)
+					combined := ui.OutputWriter.String() + ui.ErrorWriter.String()
+					if !strings.Contains(combined, tc.out) {
+						t.Errorf("expected %q to contain %q", combined, tc.out)
+					}
 				}
 			})
 		}
@@ -106,7 +107,7 @@ func TestStatusCommand_Run(t *testing.T) {
 		client, closer := testVaultServerBad(t)
 		defer closer()
 
-		ui, cmd := testStatusCommand(t)
+		ui, cmd := testTokenLookupCommand(t)
 		cmd.client = client
 
 		code := cmd.Run([]string{})
@@ -114,7 +115,7 @@ func TestStatusCommand_Run(t *testing.T) {
 			t.Errorf("expected %d to be %d", code, exp)
 		}
 
-		expected := "error checking seal status: "
+		expected := "Error making API request."
 		combined := ui.OutputWriter.String() + ui.ErrorWriter.String()
 		if !strings.Contains(combined, expected) {
 			t.Errorf("expected %q to contain %q", combined, expected)

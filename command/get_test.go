@@ -44,6 +44,12 @@ func TestGetCommand_Run(t *testing.T) {
 		code int
 	}{
 		{
+			"help_message",
+			[]string{"-help"},
+			"Usage: hashicorp-vault-monitor get [options] -field FIELD KEY",
+			StateUndefined,
+		},
+		{
 			"not_enough_args",
 			[]string{},
 			"Not enough arguments",

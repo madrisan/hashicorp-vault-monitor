@@ -45,6 +45,12 @@ func TestHAStatusCommand_Run(t *testing.T) {
 		code int
 	}{
 		{
+			"help_message",
+			[]string{"-help"},
+			"Usage: hashicorp-vault-monitor hastatus [options]",
+			StateUndefined,
+		},
+		{
 			"too_many_args",
 			[]string{"arg1"},
 			"Too many arguments",
