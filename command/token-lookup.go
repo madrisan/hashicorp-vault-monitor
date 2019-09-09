@@ -24,8 +24,8 @@ import (
 
 // Thresholds in hours for warning and critical status.
 const (
-	DefaultWarningExpiration  = "168h"
-	DefaultCriticalExpiration = "72h"
+	DefaultWarningTokenExpiration  = "168h"
+	DefaultCriticalTokenExpiration = "72h"
 )
 
 // TokenLookupCommand is a CLI Command that holds the attributes of the command `token-lookup`.
@@ -74,9 +74,22 @@ Usage: hashicorp-vault-monitor token-lookup [options]
   For a full list of examples, please see the online documentation.
 `
 	return fmt.Sprintf(helpText,
-		DefaultWarningExpiration,
-		DefaultCriticalExpiration,
+		DefaultWarningTokenExpiration,
+		DefaultCriticalTokenExpiration,
 		StateOk, StateWarning, StateCritical, StateUndefined)
+}
+
+// Parse the warning and critical thresholds and return their corresponding Duration
+func (c *TokenLookupCommand) GetThresholds() (time.Duration, time.Duration, error) {
+	warningThreshold, err := time.ParseDuration(c.WarningThreshold)
+	if err != nil {
+		return 0, 0, err
+	}
+	criticalThreshold, err := time.ParseDuration(c.CriticalThreshold)
+	if err != nil {
+		return 0, 0, err
+	}
+	return warningThreshold, criticalThreshold, nil
 }
 
 // Run executes the `token-lookup` command with the given CLI instance and command-line arguments.
@@ -86,11 +99,11 @@ func (c *TokenLookupCommand) Run(args []string) int {
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
 	cmdFlags.StringVar(&c.WarningThreshold, "warning",
-		DefaultWarningExpiration,
-		fmt.Sprintf(warningDescr, DefaultWarningExpiration))
+		DefaultWarningTokenExpiration,
+		fmt.Sprintf(warningDescr, DefaultWarningTokenExpiration))
 	cmdFlags.StringVar(&c.CriticalThreshold, "critical",
-		DefaultCriticalExpiration,
-		fmt.Sprintf(criticalDescr, DefaultCriticalExpiration))
+		DefaultCriticalTokenExpiration,
+		fmt.Sprintf(criticalDescr, DefaultCriticalTokenExpiration))
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.Ui.Error(err.Error())
@@ -109,13 +122,7 @@ func (c *TokenLookupCommand) Run(args []string) int {
 		return StateUndefined
 	}
 
-	warningThreshold, err := time.ParseDuration(c.WarningThreshold)
-	if err != nil {
-		out.Undefined(err.Error())
-		return StateUndefined
-	}
-
-	criticalThreshold, err := time.ParseDuration(c.CriticalThreshold)
+	warningThreshold, criticalThreshold, err := c.GetThresholds()
 	if err != nil {
 		out.Undefined(err.Error())
 		return StateUndefined

@@ -22,6 +22,7 @@ package command
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mitchellh/cli"
 )
@@ -33,6 +34,64 @@ func testTokenLookupCommand(t *testing.T) (*cli.MockUi, *TokenLookupCommand) {
 			Ui: ui,
 		},
 	}
+}
+
+func TestTokenLookupCommand_GetThresholds(t *testing.T) {
+	cases := []struct {
+		name              string
+		warningThreshold  string
+		criticalThreshold string
+	}{
+		{
+			"warning_threshold",
+			"24h",
+			DefaultCriticalTokenExpiration,
+		},
+		{
+			"critical_threshold",
+			DefaultWarningTokenExpiration,
+			"48h",
+		},
+		{
+			"default_thresholds",
+			DefaultWarningTokenExpiration,
+			DefaultCriticalTokenExpiration,
+		},
+	}
+
+	t.Run("usage", func(t *testing.T) {
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				_, cmd := testTokenLookupCommand(t)
+
+				cmd.WarningThreshold = tc.warningThreshold
+				cmd.CriticalThreshold = tc.criticalThreshold
+
+				warningThreshold, criticalThreshold, err := cmd.GetThresholds()
+				if err != nil {
+					t.Errorf("unexpected error while calling GetThresholds(): %s", err.Error())
+				} else {
+					expected_warningThreshold, werr := time.ParseDuration(tc.warningThreshold)
+					expected_criticalThreshold, cerr := time.ParseDuration(tc.criticalThreshold)
+					if werr != nil {
+						t.Errorf("error while parsing the warning threshold %s",
+							tc.warningThreshold)
+					} else if cerr != nil {
+						t.Errorf("error while parsing the critical threshold %s",
+							tc.criticalThreshold)
+					} else if warningThreshold != expected_warningThreshold {
+						t.Errorf("expected warning threshold %d to be %d",
+							warningThreshold,
+							expected_warningThreshold)
+					} else if criticalThreshold != expected_criticalThreshold {
+						t.Errorf("expected critical threshold %d to be %d",
+							criticalThreshold,
+							expected_criticalThreshold)
+					}
+				}
+			})
+		}
+	})
 }
 
 func TestTokenLookupCommand_Run(t *testing.T) {
