@@ -154,7 +154,7 @@ func (c *TokenLookupCommand) Run(args []string) int {
 		return StateUndefined
 	}
 
-	t, err := time.Parse(time.RFC3339Nano, expireTimeStr)
+	t, _ := time.Parse(time.RFC3339Nano, expireTimeStr)
 	delta := time.Until(t)
 
 	pluginMessage := ""

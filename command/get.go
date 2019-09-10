@@ -35,7 +35,7 @@ type GetCommand struct {
 
 // Synopsis returns a short synopsis of the `get` command.
 func (c *GetCommand) Synopsis() string {
-	return "Retrieves data from the KV store"
+	return getCommandDescr
 }
 
 // Help returns a long-form help text of the `get` command.
