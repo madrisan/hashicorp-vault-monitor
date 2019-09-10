@@ -1,13 +1,13 @@
+sudo: false
 language: go
-
-# Force-enable Go modules..
-# This will be unnecessary when Go 1.13 lands.
-env:
-  - GO111MODULE=on
-
-# Test with a recent enough compiler
 go:
+  - 1.10.x
+  - 1.11.x
   - 1.12.x
+
+# Skip the install step. Don't `go get` dependencies. Only build with the
+# code in vendor/
+install: true
 
 # Only clone the most recent commit.
 git:
@@ -15,3 +15,7 @@ git:
 
 before_script:
    go install github.com/mitchellh/gox
+
+script:
+  - make
+  - make test
