@@ -1,6 +1,6 @@
-![Release Status](https://img.shields.io/badge/status-beta-yellow.svg)
+![Release Status](https://img.shields.io/badge/status-stable-brightgreen.svg)
 [![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](https://spdx.org/licenses/MPL-2.0.html)
-[![Coverage](https://img.shields.io/badge/Go%20Coverage-67.3%25-green.svg?longCache=true&style=flat)](https://github.com/jpoles1/gopherbadger)
+[![Coverage](https://img.shields.io/badge/Go%20Coverage-67.6%25-green.svg?longCache=true&style=flat)](https://github.com/jpoles1/gopherbadger)
 [![Go Report Card](https://goreportcard.com/badge/github.com/madrisan/hashicorp-vault-monitor)](https://goreportcard.com/report/github.com/madrisan/hashicorp-vault-monitor)
 [![Build Status](https://travis-ci.org/madrisan/hashicorp-vault-monitor.svg?branch=master)](https://travis-ci.org/madrisan/hashicorp-vault-monitor)
 
@@ -31,6 +31,32 @@ make test
 Go to the top source folder and enter the command:
 ```
 make cover
+```
+
+#### Style and Static Code Analyzers (for developers)
+
+##### Golint
+
+Run the `golint`, the official linter for Go source code:
+```
+go get -u golang.org/x/lint/golint
+  # the golint binary is now available in:
+  #   go list -f {{.Target}} golang.org/x/lint/golint
+cd $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor
+
+export PATH="$PATH:$GOPATH/bin"
+golint -set_exit_status ./... | grep -v ^vendor
+```
+
+##### GolangCI-Lint
+
+Run the `GolangCI-Lint` linters aggregator:
+```
+go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
+cd $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor
+
+export PATH="$PATH:$GOPATH/bin"
+golangci-lint run ./...
 ```
 
 ## How to test the monitoring binary

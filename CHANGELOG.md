@@ -1,4 +1,4 @@
-## 0.8.0 (Unreleased)
+## 0.8.0 (September 11, 2019)
 
 FEATURES:
 
@@ -9,6 +9,10 @@ IMPROVEMENTS:
  * Update the documentation.
  * Update the test suite.
  * Rework the output module to handle warning messages.
+
+BUG FIXES:
+
+ * Fix all the issues reported by the golint and megacheck tools.
 
 ## 0.7.0 (August 16, 2019)
 
