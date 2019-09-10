@@ -28,7 +28,7 @@ type BaseCommand struct {
 	Address      string
 	OutputFormat string
 	Token        string
-	Ui           cli.Ui
+	UI           cli.Ui
 	client       *api.Client
 }
 

@@ -79,7 +79,7 @@ Usage: hashicorp-vault-monitor token-lookup [options]
 		StateOk, StateWarning, StateCritical, StateUndefined)
 }
 
-// Parse the warning and critical thresholds and return their corresponding Duration
+// GetThresholds parses the warning and critical thresholds and return their corresponding Duration values
 func (c *TokenLookupCommand) GetThresholds() (time.Duration, time.Duration, error) {
 	warningThreshold, err := time.ParseDuration(c.WarningThreshold)
 	if err != nil {
@@ -95,7 +95,7 @@ func (c *TokenLookupCommand) GetThresholds() (time.Duration, time.Duration, erro
 // Run executes the `token-lookup` command with the given CLI instance and command-line arguments.
 func (c *TokenLookupCommand) Run(args []string) int {
 	cmdFlags := flag.NewFlagSet("token-lookup", flag.ContinueOnError)
-	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
+	cmdFlags.Usage = func() { c.UI.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
 	cmdFlags.StringVar(&c.WarningThreshold, "warning",
@@ -106,13 +106,13 @@ func (c *TokenLookupCommand) Run(args []string) int {
 		fmt.Sprintf(criticalDescr, DefaultCriticalTokenExpiration))
 
 	if err := cmdFlags.Parse(args); err != nil {
-		c.Ui.Error(err.Error())
+		c.UI.Error(err.Error())
 		return StateUndefined
 	}
 
 	out, err := c.OutputHandle()
 	if err != nil {
-		c.Ui.Error(err.Error())
+		c.UI.Error(err.Error())
 		return StateUndefined
 	}
 

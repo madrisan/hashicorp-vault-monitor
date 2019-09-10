@@ -30,7 +30,7 @@ func testStatusCommand(t *testing.T) (*cli.MockUi, *StatusCommand) {
 	ui := cli.NewMockUi()
 	return ui, &StatusCommand{
 		BaseCommand: &BaseCommand{
-			Ui: ui,
+			UI: ui,
 		},
 	}
 }

@@ -58,7 +58,7 @@ func Run(args []string) int {
 		"get": func() (cli.Command, error) {
 			return &GetCommand{
 				BaseCommand: &BaseCommand{
-					Ui: &cli.ColoredUi{
+					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
 						OutputColor: cli.UiColorGreen,
@@ -71,7 +71,7 @@ func Run(args []string) int {
 		"hastatus": func() (cli.Command, error) {
 			return &HAStatusCommand{
 				BaseCommand: &BaseCommand{
-					Ui: &cli.ColoredUi{
+					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
 						OutputColor: cli.UiColorGreen,
@@ -84,7 +84,7 @@ func Run(args []string) int {
 		"policies": func() (cli.Command, error) {
 			return &PoliciesCommand{
 				BaseCommand: &BaseCommand{
-					Ui: &cli.ColoredUi{
+					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
 						OutputColor: cli.UiColorGreen,
@@ -97,7 +97,7 @@ func Run(args []string) int {
 		"status": func() (cli.Command, error) {
 			return &StatusCommand{
 				BaseCommand: &BaseCommand{
-					Ui: &cli.ColoredUi{
+					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
 						OutputColor: cli.UiColorGreen,
@@ -110,7 +110,7 @@ func Run(args []string) int {
 		"token-lookup": func() (cli.Command, error) {
 			return &TokenLookupCommand{
 				BaseCommand: &BaseCommand{
-					Ui: &cli.ColoredUi{
+					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
 						OutputColor: cli.UiColorGreen,

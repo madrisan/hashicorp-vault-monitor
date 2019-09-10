@@ -27,25 +27,25 @@ func TestVersion(t *testing.T) {
 
 	cases := []struct {
 		name            string
-		verInfo         VersionInfo
+		verInfo         Info
 		verShouldBe     string
 		fullVerShouldBe string
 	}{
 		{
 			"all_members",
-			VersionInfo{"99ee29e", "1.2.3", "dev"},
+			Info{"99ee29e", "1.2.3", "dev"},
 			"1.2.3-dev",
 			"HashiCorp Vault Monitor v1.2.3-dev (99ee29e)",
 		},
 		{
 			"version_only",
-			VersionInfo{"", "2.10", ""},
+			Info{"", "2.10", ""},
 			"2.10",
 			"HashiCorp Vault Monitor v2.10",
 		},
 		{
 			"version_unknown",
-			VersionInfo{"", "unknown", "unknown"},
+			Info{"", "unknown", "unknown"},
 			"(version unknown)",
 			"HashiCorp Vault Monitor (version unknown)",
 		},
@@ -54,7 +54,7 @@ func TestVersion(t *testing.T) {
 	t.Run("get_version", func(t *testing.T) {
 		t.Run("plain", func(t *testing.T) {
 			v := GetVersion()
-			e := &VersionInfo{
+			e := &Info{
 				"",
 				Version,
 				VersionPrerelease,

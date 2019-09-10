@@ -31,7 +31,7 @@ func testTokenLookupCommand(t *testing.T) (*cli.MockUi, *TokenLookupCommand) {
 	ui := cli.NewMockUi()
 	return ui, &TokenLookupCommand{
 		BaseCommand: &BaseCommand{
-			Ui: ui,
+			UI: ui,
 		},
 	}
 }
@@ -71,22 +71,22 @@ func TestTokenLookupCommand_GetThresholds(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error while calling GetThresholds(): %s", err.Error())
 				} else {
-					expected_warningThreshold, werr := time.ParseDuration(tc.warningThreshold)
-					expected_criticalThreshold, cerr := time.ParseDuration(tc.criticalThreshold)
+					expectedWarningThreshold, werr := time.ParseDuration(tc.warningThreshold)
+					expectedCriticalThreshold, cerr := time.ParseDuration(tc.criticalThreshold)
 					if werr != nil {
 						t.Errorf("error while parsing the warning threshold %s",
 							tc.warningThreshold)
 					} else if cerr != nil {
 						t.Errorf("error while parsing the critical threshold %s",
 							tc.criticalThreshold)
-					} else if warningThreshold != expected_warningThreshold {
+					} else if warningThreshold != expectedWarningThreshold {
 						t.Errorf("expected warning threshold %d to be %d",
 							warningThreshold,
-							expected_warningThreshold)
-					} else if criticalThreshold != expected_criticalThreshold {
+							expectedWarningThreshold)
+					} else if criticalThreshold != expectedCriticalThreshold {
 						t.Errorf("expected critical threshold %d to be %d",
 							criticalThreshold,
-							expected_criticalThreshold)
+							expectedCriticalThreshold)
 					}
 				}
 			})

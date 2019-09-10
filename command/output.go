@@ -44,31 +44,31 @@ func (c *BaseCommand) OutputHandle() (*Outputter, error) {
 	case "default":
 		return &Outputter{
 			Output: func(format string, a ...interface{}) {
-				c.Ui.Output(fmt.Sprintf(format, a...))
+				c.UI.Output(fmt.Sprintf(format, a...))
 			},
 			Warning: func(format string, a ...interface{}) {
-				c.Ui.Warn(fmt.Sprintf(format, a...))
+				c.UI.Warn(fmt.Sprintf(format, a...))
 			},
 			Critical: func(format string, a ...interface{}) {
-				c.Ui.Error(fmt.Sprintf(format, a...))
+				c.UI.Error(fmt.Sprintf(format, a...))
 			},
 			Undefined: func(format string, a ...interface{}) {
-				c.Ui.Error(fmt.Sprintf(format, a...))
+				c.UI.Error(fmt.Sprintf(format, a...))
 			},
 		}, nil
 	case "nagios":
 		return &Outputter{
 			Output: func(format string, a ...interface{}) {
-				c.Ui.Output(fmt.Sprintf("vault OK - "+format, a...))
+				c.UI.Output(fmt.Sprintf("vault OK - "+format, a...))
 			},
 			Warning: func(format string, a ...interface{}) {
-				c.Ui.Warn(fmt.Sprintf("vault WARNING - "+format, a...))
+				c.UI.Warn(fmt.Sprintf("vault WARNING - "+format, a...))
 			},
 			Critical: func(format string, a ...interface{}) {
-				c.Ui.Error(fmt.Sprintf("vault CRITICAL - "+format, a...))
+				c.UI.Error(fmt.Sprintf("vault CRITICAL - "+format, a...))
 			},
 			Undefined: func(format string, a ...interface{}) {
-				c.Ui.Error(fmt.Sprintf("vault UNDEFINED - "+format, a...))
+				c.UI.Error(fmt.Sprintf("vault UNDEFINED - "+format, a...))
 			},
 		}, nil
 	default:

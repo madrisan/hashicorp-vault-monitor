@@ -35,19 +35,19 @@ var (
 	VersionPrerelease = "unknown"
 )
 
-// VersionInfo contains the HashiCorp Vault Monitor version informations.
-type VersionInfo struct {
+// Info contains the HashiCorp Vault Monitor version informations.
+type Info struct {
 	Revision          string
 	Version           string
 	VersionPrerelease string
 }
 
-// GetVersion returns the VersionInfo structure.
-func GetVersion() *VersionInfo {
+// GetVersion returns the Info structure.
+func GetVersion() *Info {
 	ver := Version
 	rel := VersionPrerelease
 
-	return &VersionInfo{
+	return &Info{
 		Revision:          GitCommit,
 		Version:           ver,
 		VersionPrerelease: rel,
@@ -55,7 +55,7 @@ func GetVersion() *VersionInfo {
 }
 
 // VersionNumber returns the current release version of HashiCorp Vault Monitor.
-func (c *VersionInfo) VersionNumber() string {
+func (c *Info) VersionNumber() string {
 	if c.Version == "unknown" && c.VersionPrerelease == "unknown" {
 		return "(version unknown)"
 	}
@@ -70,7 +70,7 @@ func (c *VersionInfo) VersionNumber() string {
 }
 
 // FullVersionNumber returns the full version informations of HashiCorp Vault Monitor.
-func (c *VersionInfo) FullVersionNumber(rev bool) string {
+func (c *Info) FullVersionNumber(rev bool) string {
 	var versionString bytes.Buffer
 
 	if c.Version == "unknown" && c.VersionPrerelease == "unknown" {

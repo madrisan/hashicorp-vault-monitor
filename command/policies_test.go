@@ -72,7 +72,7 @@ func testPoliciesCommand(t *testing.T, token string) (*cli.MockUi, *PoliciesComm
 	return ui, &PoliciesCommand{
 		BaseCommand: &BaseCommand{
 			Token: token,
-			Ui:    ui,
+			UI:    ui,
 		},
 	}
 }

@@ -65,18 +65,18 @@ Usage: hashicorp-vault-monitor hastatus [options]
 // Run executes the `hastatus` command with the given CLI instance and command-line arguments.
 func (c *HAStatusCommand) Run(args []string) int {
 	cmdFlags := flag.NewFlagSet("hastatus", flag.ContinueOnError)
-	cmdFlags.Usage = func() { c.Ui.Output(c.Help()) }
+	cmdFlags.Usage = func() { c.UI.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
 
 	if err := cmdFlags.Parse(args); err != nil {
-		c.Ui.Error(err.Error())
+		c.UI.Error(err.Error())
 		return StateUndefined
 	}
 
 	out, err := c.OutputHandle()
 	if err != nil {
-		c.Ui.Error(err.Error())
+		c.UI.Error(err.Error())
 		return StateUndefined
 	}
 
