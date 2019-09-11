@@ -194,10 +194,10 @@ As usual, add `-output=nagios` to get an output compliant with the Nagios specif
 ###### Example of output
 
     # default output message
-    The token will expire on Mon, 07 Oct 2019 14:25:06 UTC (767h55m35s left)
+    This (renewable) token will expire on Mon, 07 Oct 2019 14:25:06 UTC (4 weeks 3 days 23 hours 55 minutes 35 seconds left)
     
     # with the '-output=nagios' switch
-    vault OK - The token will expire on Mon, 07 Oct 2019 14:25:06 UTC (767h55m35s left)
+    vault OK - This (renewable) token will expire on Mon, 07 Oct 2019 14:25:06 UTC (4 weeks 3 days 23 hours 55 minutes 35 seconds left)
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
 your output.

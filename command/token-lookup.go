@@ -20,6 +20,8 @@ import (
 	"flag"
 	"fmt"
 	"time"
+
+	"github.com/hako/durafmt"
 )
 
 // Thresholds in hours for warning and critical status.
@@ -97,6 +99,7 @@ func (c *TokenLookupCommand) Run(args []string) int {
 	cmdFlags := flag.NewFlagSet("token-lookup", flag.ContinueOnError)
 	cmdFlags.Usage = func() { c.UI.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
+	cmdFlags.StringVar(&c.Token, "token", tokenDefault, tokenDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
 	cmdFlags.StringVar(&c.WarningThreshold, "warning",
 		DefaultWarningTokenExpiration,
@@ -157,13 +160,22 @@ func (c *TokenLookupCommand) Run(args []string) int {
 	t, _ := time.Parse(time.RFC3339Nano, expireTimeStr)
 	delta := time.Until(t)
 
-	pluginMessage := ""
 	retCode := StateOk
 
 	if delta > 0 {
-		pluginMessage = fmt.Sprintf("The token will expire on %s (%s left)",
-			t.Format(time.RFC1123),
+		var pluginMessage, renewable string
+
+		if tokenIsRenewable, _ := s.TokenIsRenewable(); tokenIsRenewable {
+			renewable = "(renewable) "
+		}
+
+		left, _ := durafmt.ParseString(
 			delta.Truncate(time.Second).String())
+		pluginMessage = fmt.Sprintf("This %stoken will expire on %s (%s left)",
+			renewable,
+			t.Format(time.RFC1123),
+			left)
+
 		if delta < criticalThreshold {
 			out.Critical(pluginMessage)
 			retCode = StateCritical

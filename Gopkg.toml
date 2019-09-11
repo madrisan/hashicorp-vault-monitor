@@ -15,6 +15,10 @@
   name = "github.com/go-test/deep"
   version = "v1.0.3"
 
+[[constraint]]
+  name = "github.com/hako/durafmt"
+  version = "1.0.0"
+
 [prune]
   go-tests = true
   unused-packages = true

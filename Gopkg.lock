@@ -191,6 +191,14 @@
   revision = "e80d13ce29ede4452c43dea11e79b9bc8a15b478"
 
 [[projects]]
+  digest = "1:09970bb8daf100bdf11b48b72c71ef980cd2b50efbd903989b3d182956be0b83"
+  name = "github.com/hako/durafmt"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "7b7ae1e72eade09dbc9c2cfba3e6c4bae7b8bcac"
+  version = "1.0.0"
+
+[[projects]]
   digest = "1:0ade334594e69404d80d9d323445d2297ff8161637f9b2d347cc6973d2d6f05b"
   name = "github.com/hashicorp/errwrap"
   packages = ["."]
@@ -707,6 +715,7 @@
   analyzer-version = 1
   input-imports = [
     "github.com/go-test/deep",
+    "github.com/hako/durafmt",
     "github.com/hashicorp/go-hclog",
     "github.com/hashicorp/vault-plugin-secrets-kv",
     "github.com/hashicorp/vault/api",
