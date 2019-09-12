@@ -1,3 +1,15 @@
+## 0.8.1 (September 12, 2019)
+
+IMPROVEMENTS:
+
+ * More human readable output message for the `token-lookup` command.
+   (using the time duration parser/formatter: https://github.com/hako/durafmt)
+
+BUG FIXES:
+
+ * The `token` switch was not available for the `token-lookup` command.
+   A token could only be entered via the `VAULT_TOKEN` environment variable.
+
 ## 0.8.0 (September 11, 2019)
 
 FEATURES:
