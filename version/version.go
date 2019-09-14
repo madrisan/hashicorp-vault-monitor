@@ -14,6 +14,7 @@
   limitations under the License.
 */
 
+// Package version forges the program version string
 package version
 
 import (

@@ -14,6 +14,8 @@
   limitations under the License.
 */
 
+// Package command provides the logic for parsing command-line arguments
+// and run the available monitoring commands
 package command
 
 import (

@@ -16,6 +16,7 @@
 
 // See: https://godoc.org/github.com/hashicorp/vault/api
 
+// Package vault implements some function utilities
 package vault
 
 import "strings"
