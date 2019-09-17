@@ -22,8 +22,15 @@ $GOPATH/bin/hashicorp-vault-monitor -version
 
 ## How to use the monitoring binary
 
-If you do not have a running Vault server, you can run a dockerized version of
-the latest version.
+Export the server name in the variable `VAULT_ADDR`
+```
+export VAULT_ADDR='https://myvaultserver.mydomain.com:8200'
+```
+
+If you do not have a running Vault server and you want to test this monitoring tool,
+you can run a dockerized version of the latest version
+(requires [Docker](https://www.docker.com/)).
+Then run the export `VAULT_ADDR ...` command from the terminal output.
 ```
 docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
 
@@ -65,12 +72,10 @@ docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
     Development mode should NOT be used in production installations!
 ```
 
-You can now run the monitoring binary by entering the commands:
-
 #### Monitoring the status (unsealed/sealed)
 ```
 $GOPATH/bin/hashicorp-vault-monitor status \
-    -address=http://127.0.0.1:8200
+    -address=$VAULT_ADDR
 ```
 
 Add the output modifier `-output=nagios` if this tool is intented to
@@ -78,7 +83,7 @@ be used with the Nagios monitoring.
 
 ```
 $GOPATH/bin/hashicorp-vault-monitor status \
-    -output=nagios -address=http://127.0.0.1:8200
+    -output=nagios -address=$VAULT_ADDR
 ```
 
 ###### Example of output
@@ -92,7 +97,7 @@ $GOPATH/bin/hashicorp-vault-monitor status \
 #### Monitoring the HA Cluster Status
 ```
 $GOPATH/bin/hashicorp-vault-monitor hastatus \
-    -address=http://127.0.0.1:8200
+    -address=$VAULT_ADDR
 ```
 
 Add `-output=nagios` as above if you monitor Vault with Nagios.
@@ -108,7 +113,7 @@ Add `-output=nagios` as above if you monitor Vault with Nagios.
 #### Monitoring the installed Vault policies
 ```
 $GOPATH/bin/hashicorp-vault-monitor policies \
-    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -address $VAULT_ADDR -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
     root saltstack
 ```
 
@@ -119,14 +124,14 @@ Add the flag `-output=nagios` if you monitor Vault with Nagios.
 ##### Get a secret from Vault KV data store v1
 ```
 $GOPATH/bin/hashicorp-vault-monitor get \
-    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -address $VAULT_ADDR -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
     -field foo secret/mysecret
 ```
 
 ##### Get a secret from Vault KV data store v2
 ```
 $GOPATH/bin/hashicorp-vault-monitor get \
-    -address http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -address $VAULT_ADDR -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
     -field foo secret/data/mysecret
 ```
 
@@ -143,7 +148,7 @@ The `-output=nagios` switch must be added as usual to make the output compliance
 #### Monitoring the expiration date of the Vault token
 ```
 $GOPATH/bin/hashicorp-vault-monitor token-lookup \
-    -address=http://127.0.0.1:8200 -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -address=$VAULT_ADDR -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
     -warning=120h -critical=72h
 ```
 The `-warning` and `-critical` switches are optional and default to *168h* (7 days)
@@ -163,7 +168,7 @@ Note that you should replace `39d2c7...` with the generated *Root token* from
 your output.
 
 You can omit the `-address` and `-token` flags by setting the environment
-variables `VAULT_ADDR` and `VAULT_TOKEN`:
+variables `VAULT_ADDR` and `VAULT_TOKEN` as shown in the following example:
 ```
 export VAULT_ADDR="http://127.0.0.1:8200"
 export VAULT_TOKEN="39d2c714-6dce-6d96-513f-4cb250bf7fe8"
@@ -176,6 +181,10 @@ $GOPATH/bin/hashicorp-vault-monitor get -field foo secret/data/mysecret
 
 The *Root Token* can also be used to login to the Vault web interface at the
 URL
+```
+https://myvaultserver.mydomain.com:8200/ui
+```
+or, if you're using the dockerized Vault server:
 ```
 http://127.0.0.1:8200/ui
 ```
