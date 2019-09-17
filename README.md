@@ -11,7 +11,6 @@
 ![](images/HashiCorp-Vault-logo.png?raw=true "HashiCorp Vault")
 
 ## How to build the source code
-
 ```
 [ "$GOPATH" ] || export GOPATH="$HOME/go"
 go get -u github.com/madrisan/hashicorp-vault-monitor
@@ -21,47 +20,7 @@ make -C $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor bootstrap dev
 $GOPATH/bin/hashicorp-vault-monitor -version
 ```
 
-#### Run the Test Suite (for developers)
-
-Just run in the top source folder (`$GOPATH/src/github.com/madrisan/hashicorp-vault-monitor`):
-```
-make test
-```
-
-#### Generate Test Coverage Statistics (for developers)
-
-Go to the top source folder and enter the command:
-```
-make cover
-```
-
-#### Style and Static Code Analyzers (for developers)
-
-##### Golint
-
-Run the `golint`, the official linter for Go source code:
-```
-go get -u golang.org/x/lint/golint
-  # the golint binary is now available in:
-  #   go list -f {{.Target}} golang.org/x/lint/golint
-cd $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor
-
-export PATH="$PATH:$GOPATH/bin"
-golint -set_exit_status ./... | grep -v ^vendor
-```
-
-##### GolangCI-Lint
-
-Run the `GolangCI-Lint` linters aggregator:
-```
-go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
-cd $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor
-
-export PATH="$PATH:$GOPATH/bin"
-golangci-lint run ./...
-```
-
-## How to test the monitoring binary
+## How to use the monitoring binary
 
 If you do not have a running Vault server, you can run a dockerized version of
 the latest version.
@@ -229,3 +188,47 @@ http://127.0.0.1:8200/ui
 
 ![](images/HashiCorp-Vault-web-ui-secrets.png?raw=true "HashiCorp Vault Web UI Secrets")
 ###### Image 3. Screenshot of the web UI secrets management page
+
+## Developers' corner
+
+Some extra actions that may be usefull to project developers.
+
+#### Run the Test Suite
+
+Just run in the top source folder (`$GOPATH/src/github.com/madrisan/hashicorp-vault-monitor`):
+```
+make test
+```
+
+#### Generate Test Coverage Statistics
+
+Go to the top source folder and enter the command:
+```
+make cover
+```
+
+#### Style and Static Code Analyzers
+
+##### Golint
+
+Run the `golint`, the official linter for Go source code:
+```
+go get -u golang.org/x/lint/golint
+  # the golint binary is now available in:
+  #   go list -f {{.Target}} golang.org/x/lint/golint
+cd $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor
+
+export PATH="$PATH:$GOPATH/bin"
+golint -set_exit_status ./... | grep -v ^vendor
+```
+
+##### GolangCI-Lint
+
+Run the `GolangCI-Lint` linters aggregator:
+```
+go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
+cd $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor
+
+export PATH="$PATH:$GOPATH/bin"
+golangci-lint run ./...
+```
