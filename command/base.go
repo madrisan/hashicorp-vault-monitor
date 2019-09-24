@@ -55,10 +55,6 @@ func (c *BaseCommand) Client() (*api.Client, error) {
 			config.Error.Error())
 	}
 
-	if c.Address != "" {
-		config.Address = c.Address
-	}
-
 	client, err := api.NewClient(config)
 	if err != nil {
 		return nil, err
