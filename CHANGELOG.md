@@ -1,3 +1,16 @@
+## 0.8.2 (September 30, 2019)
+
+BUG FIXES:
+
+ * Fix the broken initialization of the Vault URL that made impossible to
+   setup the Vault address via the environment variable `VAULT_ADDR`.
+
+IMPROVEMENTS:
+
+ * Update the documentation.
+ * Add a configuration file for
+   [CircleCI](https://circleci.com/gh/madrisan/hashicorp-vault-monitor).
+
 ## 0.8.1 (September 12, 2019)
 
 IMPROVEMENTS:
