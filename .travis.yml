@@ -15,8 +15,8 @@ git:
   depth: 1
 
 before_script:
-  go install github.com/mitchellh/gox \
-             github.com/golangci/golangci-lint/cmd/golangci-lint
+  - go install github.com/mitchellh/gox
+  - go install github.com/golangci/golangci-lint/cmd/golangci-lint
 
 script:
   - make
