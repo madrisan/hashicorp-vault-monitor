@@ -1,5 +1,6 @@
 EXTERNAL_TOOLS = \
-	github.com/mitchellh/gox
+	github.com/mitchellh/gox \
+	github.com/golangci/golangci-lint/cmd/golangci-lint
 
 CGO_ENABLED = 0
 GOFMT_FILES ?= $$(find -name "*.go" -not -path "./vendor/*")
@@ -41,3 +42,23 @@ test: prep
 	VAULT_ADDR= \
 	VAULT_TOKEN= \
 	go test -tags='$(BUILD_TAGS)' $(TEST) $(TESTARGS) -parallel=5
+
+
+# lint runs vet plus a number of other checkers, it is more comprehensive, but louder
+lint:
+	@go list -f '{{.Dir}}' ./... | grep -v /vendor/ \
+		| xargs golangci-lint run; if [ $$? -eq 1 ]; then \
+			echo ""; \
+			echo "Lint found suspicious constructs. Please check the reported constructs"; \
+			echo "and fix them if necessary before submitting the code for reviewal."; \
+		fi
+# vet runs the Go source code static analysis tool `vet` to find
+# any common errors.
+vet:
+	@go list -f '{{.Dir}}' ./... | grep -v /vendor/ \
+		| grep -v '.*github.com/hashicorp/vault$$' \
+		| xargs go vet ; if [ $$? -eq 1 ]; then \
+			echo ""; \
+			echo "Vet found suspicious constructs. Please check the reported constructs"; \
+			echo "and fix them if necessary before submitting the code for reviewal."; \
+		fi

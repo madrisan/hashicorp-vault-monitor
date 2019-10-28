@@ -241,3 +241,17 @@ cd $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor
 export PATH="$PATH:$GOPATH/bin"
 golangci-lint run ./...
 ```
+
+or just execute (requires `hashicorp-vault-monitor` version > 0.8.2):
+```
+make -C $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor lint
+```
+
+##### Go Vet
+
+Run the Go source code static analysis tool `vet` to find any common errors.
+```
+make -C $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor vet
+```
+
+This command is available with `hashicorp-vault-monitor` version > 0.8.2.
