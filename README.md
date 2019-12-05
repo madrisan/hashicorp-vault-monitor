@@ -29,8 +29,10 @@ export VAULT_ADDR='https://myvaultserver.mydomain.com:8200'
 
 If you do not have a running Vault server and you want to test this monitoring tool,
 you can run a dockerized version of the latest version
-(requires [Docker](https://www.docker.com/)).
-Then run the export `VAULT_ADDR ...` command from the terminal output.
+(requires [Docker](https://www.docker.com/) or [Podman](https://podman.io/)).
+Then run the export `VAULT_ADDR ...` command from the terminal output
+(replace `docker` by `podman` if you use the latter and do not have the
+podman Docker CLI emulation configured).
 ```
 docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
 
