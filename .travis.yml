@@ -1,14 +1,14 @@
 language: go
-go:
-  - 1.11.x
-  - 1.12.x
+
+# GO111MODULE=on forces-enable Go modules.
+# This is no more necessary with Go 1.13.
+matrix:
+  include:
+  - go: 1.13.x
+  - go: 1.12.x
+    env: GO111MODULE=on
 
 sudo: false
-
-# Force-enable Go modules..
-# This will be unnecessary when Go 1.13 lands.
-env:
-  - GO111MODULE=on
 
 # Only clone the most recent commit.
 git:
