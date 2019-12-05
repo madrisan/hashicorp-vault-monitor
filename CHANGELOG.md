@@ -1,3 +1,15 @@
+## 0.8.3 (December 5, 2019)
+
+BUG FIXES:
+
+ * Fix (once again) the initialization of the Vault URL by ensuring that
+   the command-line value has precedence over the default value and the
+   VAULT_ADDR environment variable.
+
+OTHER:
+
+ * Travis CI: add go 1.13.x build target and remove the 1.11.x one.
+
 ## 0.8.2 (September 30, 2019)
 
 BUG FIXES:
