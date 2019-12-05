@@ -1,5 +1,5 @@
 /*
-  Copyright 2018 Davide Madrisan <davide.madrisan@gmail.com>
+  Copyright 2018-2019 Davide Madrisan <davide.madrisan@gmail.com>
 
   Licensed under the Mozilla Public License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -43,18 +43,21 @@ func (c *BaseCommand) Client() (*api.Client, error) {
 		return c.client, nil
 	}
 
-	// Create a default configuration.
-	// Note that `api.DefaultConfig` execute `api.ReadEnvironment` and thus
-	// loads all the Vault environment variables except `VAULT_TOKEN`
+	// Create a configuration for Vault looking at env and command-line args
 	config := api.DefaultConfig()
 	if config == nil {
 		return nil, fmt.Errorf("could not create/read default configuration for Vault")
 	}
-	if config.Error != nil {
-		return nil, fmt.Errorf("error encountered setting up default configuration: %s",
-			config.Error.Error())
+
+	if err := config.ReadEnvironment(); err != nil {
+		return nil, fmt.Errorf("failed to read environment")
 	}
 
+	if c.Address != "" && c.Address != addressDefault {
+		config.Address = c.Address
+	}
+
+	// Build the client
 	client, err := api.NewClient(config)
 	if err != nil {
 		return nil, err
