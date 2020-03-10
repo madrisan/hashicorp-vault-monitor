@@ -74,6 +74,45 @@ docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
     Development mode should NOT be used in production installations!
 ```
 
+We can now create (in a different terminal if you run the Vault dockerized version) a Vault policy we'ill use in the examples below
+```
+cat > accessor_lookup_policy.hcl <<__END
+path "auth/token/lookup-accessor" {
+    capabilities = ["update", "sudo", "read", "list"]
+}
+__END
+
+vault login
+   # enter the root token (or an admin token with sufficient permissions)
+
+vault policy write accessor-policy accessor_lookup_policy.hcl
+```
+and two other (non-root) tokens
+```
+vault policy write accessor-policy accessor_lookup_policy.hcl
+vault token create -policy=accessor-policy -renewable -period=768h
+       Key                  Value
+        ---                  -----
+        token                s.iJPhLRp25r9FRwg4vrxfd0I7
+        token_accessor       NzHyqTGPITcSYMiA31goyEXh
+        token_duration       768h
+        token_renewable      true
+        token_policies       ["default" "accessor-policy"]
+        identity_policies    []
+        policies             ["default" "accessor-policy"]
+
+vault token create -policy=default -renewable -period=768h
+       Key                  Value
+        ---                  -----
+        token                s.EFI8PMCZF1KInfCj1yyI7Rpy
+        token_accessor       ljXiSqQDdSZBYthO7IsrFMD2
+        token_duration       768h
+        token_renewable      true
+        token_policies       ["default"]
+        identity_policies    []
+        policies             ["default"]
+```
+
 #### Monitoring the status (unsealed/sealed)
 ```
 $GOPATH/bin/hashicorp-vault-monitor status \
@@ -147,10 +186,10 @@ The `-output=nagios` switch must be added as usual to make the output compliance
     # with the '-output=nagios' switch
     vault OK - found a value for the key foo: 'this-is-a-secret-for-checking-vault'
 
-#### Monitoring the expiration date of the Vault token
+#### Monitoring the expiration date of a Vault token
 ```
 $GOPATH/bin/hashicorp-vault-monitor token-lookup \
-    -address=$VAULT_ADDR -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
+    -address=$VAULT_ADDR -token="s.EFI8PMCZF1KInfCj1yyI7Rpy" \
     -warning=120h -critical=72h
 ```
 The `-warning` and `-critical` switches are optional and default to *168h* (7 days)
@@ -166,8 +205,24 @@ As usual, add `-output=nagios` to get an output compliant with the Nagios specif
     # with the '-output=nagios' switch
     vault OK - This (renewable) token will expire on Mon, 07 Oct 2019 14:25:06 UTC (4 weeks 3 days 23 hours 55 minutes 35 seconds left)
 
+#### Monitoring the expiration date of a Vault token via its associated token accessor
+
+To avoid exposing the tokens in your monitoring setup, you can make use of their associated *Token Accessors*.
+```
+$GOPATH/bin/hashicorp-vault-monitor token-lookup \
+    -address=$VAULT_ADDR -token="s.iJPhLRp25r9FRwg4vrxfd0I7" \
+    -token-accessor="ljXiSqQDdSZBYthO7IsrFMD2" \
+    -warning=120h -critical=72h
+```
+The `-warning` and `-critical` switches are optional and default to *168h* (7 days)
+and *72h* (3 days) respectively, as described above.
+
+Add `-output=nagios` to get an output compliant with the Nagios specifications.
+
+---
+
 Note that you should replace `39d2c7...` with the generated *Root token* from
-your output.
+your output. The same for the values of the other two tokens used in the examples.
 
 You can omit the `-address` and `-token` flags by setting the environment
 variables `VAULT_ADDR` and `VAULT_TOKEN` as shown in the following example:
