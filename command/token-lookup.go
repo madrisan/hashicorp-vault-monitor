@@ -1,5 +1,5 @@
 /*
-  Copyright 2019 Davide Madrisan <davide.madrisan@gmail.com>
+  Copyright 2019-2020 Davide Madrisan <davide.madrisan@gmail.com>
 
   Licensed under the Mozilla Public License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/hako/durafmt"
+	"github.com/hashicorp/vault/api"
 )
 
 // Thresholds in hours for warning and critical status.
@@ -56,6 +57,9 @@ Usage: hashicorp-vault-monitor token-lookup [options]
     -address=<string>
        Address of the Vault server. The default is https://127.0.0.1:8200. This
        can also be specified via the VAULT_ADDR environment variable.
+
+    -token-accessor=<string>
+       The token accessor to lookup at (instead of the token itself).
 
     -output=<string>
        Specify an output format. Can be 'default' or 'nagios'.
@@ -100,6 +104,7 @@ func (c *TokenLookupCommand) Run(args []string) int {
 	cmdFlags.Usage = func() { c.UI.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.Token, "token", tokenDefault, tokenDescr)
+	cmdFlags.StringVar(&c.TokenAccessor, "token-accessor", tokenAccessorDefault, tokenAccessorDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
 	cmdFlags.StringVar(&c.WarningThreshold, "warning",
 		DefaultWarningTokenExpiration,
@@ -139,18 +144,24 @@ func (c *TokenLookupCommand) Run(args []string) int {
 
 	ta := client.Auth().Token()
 
-	s, err := ta.LookupSelf()
+	var secret *api.Secret
+	if c.TokenAccessor == "" {
+		secret, err = ta.LookupSelf()
+	} else {
+		secret, err = ta.LookupAccessor(c.TokenAccessor)
+	}
+
 	if err != nil {
 		out.Undefined(err.Error())
 		return StateUndefined
 	}
 
-	if s.Data == nil || s.Data["expire_time"] == nil {
+	if secret.Data == nil || secret.Data["expire_time"] == nil {
 		out.Undefined("Cannot get the expire time of the Vault token")
 		return StateUndefined
 	}
 
-	expireTimeRaw := s.Data["expire_time"]
+	expireTimeRaw := secret.Data["expire_time"]
 	expireTimeStr, ok := expireTimeRaw.(string)
 	if !ok {
 		out.Undefined("Could not convert expire_time to a string")
@@ -165,7 +176,7 @@ func (c *TokenLookupCommand) Run(args []string) int {
 	if delta > 0 {
 		var pluginMessage, renewable string
 
-		if tokenIsRenewable, _ := s.TokenIsRenewable(); tokenIsRenewable {
+		if tokenIsRenewable, _ := secret.TokenIsRenewable(); tokenIsRenewable {
 			renewable = "(renewable) "
 		}
 

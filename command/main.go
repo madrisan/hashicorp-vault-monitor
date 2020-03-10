@@ -36,6 +36,9 @@ const (
 	tokenDescr   = "The token to access Vault. " +
 		"Overrides the " + api.EnvVaultToken + " environment variable if set"
 
+	tokenAccessorDefault = ""
+	tokenAccessorDescr   = "The token accessor to lookup"
+
 	warningDescr  = "Warning threshold (default: %s)"
 	criticalDescr = "Critical threshold (default: %s)"
 
