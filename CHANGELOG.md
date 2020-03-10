@@ -1,3 +1,11 @@
+## 0.8.4 (March 10, 2020)
+
+IMPROVEMENTS:
+
+ * Monitor the expiration date of a Vault token via its associated
+   token accessor with the new command-line option: -token-accessor.
+ * Update the documentation.
+
 ## 0.8.3 (December 5, 2019)
 
 BUG FIXES:
