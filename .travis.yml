@@ -3,10 +3,9 @@ language: go
 # Force-enable Go modules..
 # This will be unnecessary when Go 1.14 lands.
 env:
-  - GO111MODULE=on
+  - GO111MODULE=auto
 
 go:
-  - 1.12.x
   - 1.13.x
 
 # Only clone the most recent commit.
