@@ -16,13 +16,17 @@
 go get -u github.com/madrisan/hashicorp-vault-monitor
 
 export PATH="$PATH:$GOPATH/bin"
-make -C $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor bootstrap dev
 $GOPATH/bin/hashicorp-vault-monitor -version
 ```
+Optionally if you want to compile this tool for all the supported operating systems:
+```
+make -C $GOPATH/src/github.com/madrisan/hashicorp-vault-monitor bootstrap dev
+```
+You'll find the compiled binaries in the folder `$GOPATH//src/github.com/madrisan/hashicorp-vault-monitor/pkg/`.
 
-## How to use the monitoring binary
+## How to use the hashicorp-vault-monitor tool
 
-Export the server name in the variable `VAULT_ADDR`
+Export the Hashicorp Vault server url in the variable `VAULT_ADDR`
 ```
 export VAULT_ADDR='https://myvaultserver.mydomain.com:8200'
 ```
@@ -72,9 +76,12 @@ docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
     Root Token: 39d2c714-6dce-6d96-513f-4cb250bf7fe8
 
     Development mode should NOT be used in production installations!
+
+
+export VAULT_ADDR='http://0.0.0.0:8200'
 ```
 
-We can now create (in a different terminal if you run the Vault dockerized version) a Vault policy we'ill use in the examples below
+We can now create (in a different terminal, if you run the dockerized version of the Vault server) a Vault *policy* that we'll use later in the examples:
 ```
 cat > accessor_lookup_policy.hcl <<__END
 path "auth/token/lookup-accessor" {
@@ -87,7 +94,7 @@ vault login
 
 vault policy write accessor-policy accessor_lookup_policy.hcl
 ```
-and two other (non-root) tokens
+and two extra (non-root) tokens:
 ```
 vault policy write accessor-policy accessor_lookup_policy.hcl
 vault token create -policy=accessor-policy -renewable -period=768h
@@ -112,8 +119,9 @@ vault token create -policy=default -renewable -period=768h
         identity_policies    []
         policies             ["default"]
 ```
-
-#### Monitoring the status (unsealed/sealed)
+Note that the policies applied to the tokens are different.
+ 
+### Monitoring the status (unsealed/sealed)
 ```
 $GOPATH/bin/hashicorp-vault-monitor status \
     -address=$VAULT_ADDR
@@ -127,7 +135,7 @@ $GOPATH/bin/hashicorp-vault-monitor status \
     -output=nagios -address=$VAULT_ADDR
 ```
 
-###### Example of output
+##### Example of output
 
     # default output message
     Vault (vault-cluster-50531563) is unsealed
@@ -135,7 +143,7 @@ $GOPATH/bin/hashicorp-vault-monitor status \
     # with the '-output=nagios' switch
     vault OK - Vault (vault-cluster-50531563) is unsealed
 
-#### Monitoring the HA Cluster Status
+### Monitoring the HA Cluster Status
 ```
 $GOPATH/bin/hashicorp-vault-monitor hastatus \
     -address=$VAULT_ADDR
@@ -143,15 +151,19 @@ $GOPATH/bin/hashicorp-vault-monitor hastatus \
 
 Add `-output=nagios` as above if you monitor Vault with Nagios.
 
-###### Example of output
+##### Example of output
 
     # default output message
     Vault HA (vault-cluster-50531563) is enabled, Standby Node (Active Node Address: https://192.168.1.8:8200)
+
+    # error message displayed when the HA mode is not enabled
+    Vault HA (vault-cluster-50531563) is not enabled
     
     # with the '-output=nagios' switch
     vault OK - Vault HA (vault-cluster-50531563) is enabled, Standby Node (Active Node Address: https://192.168.1.8:8200)
+    vault CRITICAL - Vault HA (vault-cluster-50531563) is not enabled
 
-#### Monitoring the installed Vault policies
+### Monitoring the installed Vault policies
 ```
 $GOPATH/bin/hashicorp-vault-monitor policies \
     -address $VAULT_ADDR -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
@@ -160,16 +172,16 @@ $GOPATH/bin/hashicorp-vault-monitor policies \
 
 Add the flag `-output=nagios` if you monitor Vault with Nagios.
 
-#### Monitoring the access to the Vault KV data store
+### Monitoring the access to the Vault KV data store
 
-##### Get a secret from Vault KV data store v1
+#### Get a secret from Vault KV data store v1
 ```
 $GOPATH/bin/hashicorp-vault-monitor get \
     -address $VAULT_ADDR -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
     -field foo secret/mysecret
 ```
 
-##### Get a secret from Vault KV data store v2
+#### Get a secret from Vault KV data store v2
 ```
 $GOPATH/bin/hashicorp-vault-monitor get \
     -address $VAULT_ADDR -token "39d2c714-6dce-6d96-513f-4cb250bf7fe8" \
@@ -178,15 +190,15 @@ $GOPATH/bin/hashicorp-vault-monitor get \
 
 The `-output=nagios` switch must be added as usual to make the output compliance with Nagios.
 
-###### Example of output
+##### Example of output
 
     # default output message
-    found a value for the key foo: 'this-is-a-secret-for-checking-vault'
+    found a value for the key foo: 'this-is-a-secret'
     
     # with the '-output=nagios' switch
     vault OK - found a value for the key foo: 'this-is-a-secret-for-checking-vault'
 
-#### Monitoring the expiration date of a Vault token
+### Monitoring the expiration date of a Vault token
 ```
 $GOPATH/bin/hashicorp-vault-monitor token-lookup \
     -address=$VAULT_ADDR -token="s.EFI8PMCZF1KInfCj1yyI7Rpy" \
@@ -197,7 +209,7 @@ and *72h* (3 days) respectively.
 
 As usual, add `-output=nagios` to get an output compliant with the Nagios specifications.
 
-###### Example of output
+##### Example of output
 
     # default output message
     This (renewable) token will expire on Mon, 07 Oct 2019 14:25:06 UTC (4 weeks 3 days 23 hours 55 minutes 35 seconds left)
@@ -205,7 +217,7 @@ As usual, add `-output=nagios` to get an output compliant with the Nagios specif
     # with the '-output=nagios' switch
     vault OK - This (renewable) token will expire on Mon, 07 Oct 2019 14:25:06 UTC (4 weeks 3 days 23 hours 55 minutes 35 seconds left)
 
-#### Monitoring the expiration date of a Vault token via its associated token accessor
+### Monitoring the expiration date of a Vault token via its associated token accessor
 
 To avoid exposing the tokens in your monitoring setup, you can make use of their associated *Token Accessors*.
 ```
@@ -222,7 +234,7 @@ Add `-output=nagios` to get an output compliant with the Nagios specifications.
 ---
 
 Note that you should replace `39d2c7...` with the generated *Root token* from
-your output. The same for the values of the other two tokens used in the examples.
+your output. The same for the values of the two other tokens used in the examples.
 
 You can omit the `-address` and `-token` flags by setting the environment
 variables `VAULT_ADDR` and `VAULT_TOKEN` as shown in the following example:
