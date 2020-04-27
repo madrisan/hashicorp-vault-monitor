@@ -62,13 +62,13 @@ func (c *BaseCommand) OutputHandle() (*Outputter, error) {
 				c.UI.Output(fmt.Sprintf("vault OK - "+format, a...))
 			},
 			Warning: func(format string, a ...interface{}) {
-				c.UI.Warn(fmt.Sprintf("vault WARNING - "+format, a...))
+				c.UI.Output(fmt.Sprintf("vault WARNING - "+format, a...))
 			},
 			Critical: func(format string, a ...interface{}) {
-				c.UI.Error(fmt.Sprintf("vault CRITICAL - "+format, a...))
+				c.UI.Output(fmt.Sprintf("vault CRITICAL - "+format, a...))
 			},
 			Undefined: func(format string, a ...interface{}) {
-				c.UI.Error(fmt.Sprintf("vault UNDEFINED - "+format, a...))
+				c.UI.Output(fmt.Sprintf("vault UNDEFINED - "+format, a...))
 			},
 		}, nil
 	default:
