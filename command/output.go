@@ -59,16 +59,16 @@ func (c *BaseCommand) OutputHandle() (*Outputter, error) {
 	case "nagios":
 		return &Outputter{
 			Output: func(format string, a ...interface{}) {
-				c.UI.Output(fmt.Sprintf("vault OK - "+format, a...))
+				c.UI.Info(fmt.Sprintf("vault OK - "+format, a...))
 			},
 			Warning: func(format string, a ...interface{}) {
-				c.UI.Warn(fmt.Sprintf("vault WARNING - "+format, a...))
+				c.UI.Info(fmt.Sprintf("vault WARNING - "+format, a...))
 			},
 			Critical: func(format string, a ...interface{}) {
-				c.UI.Error(fmt.Sprintf("vault CRITICAL - "+format, a...))
+				c.UI.Info(fmt.Sprintf("vault CRITICAL - "+format, a...))
 			},
 			Undefined: func(format string, a ...interface{}) {
-				c.UI.Error(fmt.Sprintf("vault UNDEFINED - "+format, a...))
+				c.UI.Info(fmt.Sprintf("vault UNDEFINED - "+format, a...))
 			},
 		}, nil
 	default:
