@@ -66,6 +66,7 @@ func Run(args []string) int {
 					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
+						InfoColor:   cli.UiColorNone,
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
@@ -79,6 +80,7 @@ func Run(args []string) int {
 					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
+						InfoColor:   cli.UiColorNone,
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
@@ -92,6 +94,7 @@ func Run(args []string) int {
 					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
+						InfoColor:   cli.UiColorNone,
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
@@ -105,6 +108,7 @@ func Run(args []string) int {
 					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
+						InfoColor:   cli.UiColorNone,
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
@@ -118,6 +122,7 @@ func Run(args []string) int {
 					UI: &cli.ColoredUi{
 						Ui:          ui,
 						ErrorColor:  cli.UiColorRed,
+						InfoColor:   cli.UiColorNone,
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
