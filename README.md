@@ -4,7 +4,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/madrisan/hashicorp-vault-monitor)](https://goreportcard.com/report/github.com/madrisan/hashicorp-vault-monitor)
 [![Build Status](https://travis-ci.org/madrisan/hashicorp-vault-monitor.svg?branch=master)](https://travis-ci.org/madrisan/hashicorp-vault-monitor)
 [![GolangCI](https://img.shields.io/badge/GolangCI-A+-success)](https://github.com/madrisan/hashicorp-vault-monitor/)
-[![CircleCI](https://circleci.com/gh/madrisan/hashicorp-vault-monitor.svg?style=svg)](https://circleci.com/gh/madrisan/hashicorp-vault-monitor)
+#[![CircleCI](https://circleci.com/gh/madrisan/hashicorp-vault-monitor.svg?style=svg)](https://circleci.com/gh/madrisan/hashicorp-vault-monitor)
 
 # Hashicorp Vault Monitor [![GoDoc](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor?status.png)](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor)
 
