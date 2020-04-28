@@ -1,4 +1,5 @@
 version: 2
+
 jobs:
   build:
     docker: # run the steps with Docker
@@ -12,8 +13,8 @@ jobs:
       - checkout # check out source code to working directory
       - run:
           command: |
-            go install github.com/mitchellh/gox
-            make # pull and build dependencies for the project
+            # build dependencies for the project and dev binary
+            make ci-bootstrap dev
       - run:
           name: Run unit tests
           command: |
