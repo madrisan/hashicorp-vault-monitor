@@ -81,7 +81,7 @@ docker run -it -p 8200:8200 --cap-add=IPC_LOCK vault:latest
 export VAULT_ADDR='http://0.0.0.0:8200'
 ```
 
-We can now create (in a different terminal, if you run the dockerized version of the Vault server) a Vault *policy* that we'll use later in the examples:
+We can now create (in a different terminal, if you run the dockerized version of the Vault server) a Vault *policy* that we'll use later in the examples (you can find the binary *vault* [here](https://www.vaultproject.io/downloads)):
 ```
 cat > accessor_lookup_policy.hcl <<__END
 path "auth/token/lookup-accessor" {
@@ -96,7 +96,6 @@ vault policy write accessor-policy accessor_lookup_policy.hcl
 ```
 and two extra (non-root) tokens:
 ```
-vault policy write accessor-policy accessor_lookup_policy.hcl
 vault token create -policy=accessor-policy -renewable -period=768h
        Key                  Value
         ---                  -----
