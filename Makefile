@@ -1,6 +1,6 @@
 EXTERNAL_TOOLS = \
-	github.com/mitchellh/gox \
-	github.com/golangci/golangci-lint/cmd/golangci-lint
+	github.com/mitchellh/gox@latest \
+	github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 CGO_ENABLED = 0
 GOFMT_FILES ?= $$(find -name "*.go" -not -path "./vendor/*")
@@ -22,7 +22,7 @@ dev: prep
 bootstrap:
 	@for tool in  $(EXTERNAL_TOOLS) ; do \
 		echo "Installing/Updating $$tool" ; \
-		go get -u $$tool; \
+		GO111MODULE=on go get -u $$tool; \
 	done
 
 cover:
