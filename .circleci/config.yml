@@ -14,7 +14,7 @@ jobs:
       - run:
           command: |
             # build dependencies for the project and dev binary
-            make ci-bootstrap dev
+            make bootstrap dev
       - run:
           name: Run unit tests
           command: |
