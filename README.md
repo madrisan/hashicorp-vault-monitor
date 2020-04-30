@@ -2,8 +2,11 @@
 [![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](https://spdx.org/licenses/MPL-2.0.html)
 [![Coverage](https://img.shields.io/badge/Go%20Coverage-67.1%25-green.svg?longCache=true&style=flat)](https://github.com/jpoles1/gopherbadger)
 [![Go Report Card](https://goreportcard.com/badge/github.com/madrisan/hashicorp-vault-monitor)](https://goreportcard.com/report/github.com/madrisan/hashicorp-vault-monitor)
-[![Build Status](https://travis-ci.org/madrisan/hashicorp-vault-monitor.svg?branch=master)](https://travis-ci.org/madrisan/hashicorp-vault-monitor)
 [![GolangCI](https://img.shields.io/badge/GolangCI-A+-success)](https://github.com/madrisan/hashicorp-vault-monitor/)
+
+[![Build Status](https://travis-ci.org/madrisan/hashicorp-vault-monitor.svg?branch=master)](https://travis-ci.org/madrisan/hashicorp-vault-monitor)
+[![CircleCI](https://circleci.com/gh/madrisan/hashicorp-vault-monitor.svg?style=svg)](https://circleci.com/gh/madrisan/hashicorp-vault-monitor)
+![SemaphoreCI](https://madrisan.semaphoreci.com/badges/hashicorp-vault-monitor.svg?style=shields)
 
 # Hashicorp Vault Monitor [![GoDoc](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor?status.png)](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor)
 
