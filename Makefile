@@ -1,6 +1,6 @@
 EXTERNAL_TOOLS = \
-	github.com/mitchellh/gox@latest \
-	github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	github.com/mitchellh/gox@v1.0.1 \
+	github.com/golangci/golangci-lint@v1.25.1
 
 CGO_ENABLED = 0
 GOFMT_FILES ?= $$(find -name "*.go" -not -path "./vendor/*")
