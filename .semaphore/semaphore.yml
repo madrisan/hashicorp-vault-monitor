@@ -11,35 +11,12 @@ blocks:
       env_vars:
         - name: GO111MODULE
           value: "on"
-        - name: GOPATH
-          value: "$HOME/go"
-        - name: PATH
-          value: "$PATH:$GOPATH/bin"
       jobs:
         - name: Build and execute the tests
           commands:
             - checkout
             - sem-version go 1.13
-            - go get -u github.com/mitchellh/gox@v1.0.1
-            - go get -u github.com/golangci/golangci-lint@v1.25.1
-            - make
-            - make test
-            - $GOPATH/bin/hashicorp-vault-monitor -version
-
- - name: Run with Go 1.12
-   task:
-      env_vars:
-        - name: GO111MODULE
-          value: "on"
-        - name: GOPATH
-          value: "$HOME/go"
-        - name: PATH
-          value: "$PATH:$GOPATH/bin"
-      jobs:
-        - name: Build and execute the tests
-          commands:
-            - checkout
-            - sem-version go 1.12
+            - export "PATH=$(go env GOPATH)/bin:${PATH}"
             - go get -u github.com/mitchellh/gox@v1.0.1
             - go get -u github.com/golangci/golangci-lint@v1.25.1
             - make
