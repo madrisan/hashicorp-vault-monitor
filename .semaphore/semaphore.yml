@@ -1,0 +1,33 @@
+version: v1.0
+name: HashiCorp Vault Monitor
+agent:
+  machine:
+    type: e1-standard-2
+    os_image: ubuntu1804
+
+blocks:
+ - name: Build with Go 1.13
+   task:
+      env_vars:
+        - name: GO111MODULE
+          value: "on"
+      jobs:
+        - name: Build and execute the tests
+          commands:
+            - checkout
+            - sem-version go 1.13
+            - make
+            - make test
+
+ - name: Run with Go 1.12
+   task:
+      env_vars:
+        - name: GO111MODULE
+          value: "on"
+      jobs:
+        - name: Build and execute the tests
+          commands:
+            - checkout
+            - sem-version go 1.12
+            - make
+            - make test
