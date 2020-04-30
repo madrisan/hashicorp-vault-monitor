@@ -20,11 +20,10 @@ blocks:
           commands:
             - checkout
             - sem-version go 1.13
-            - export "PATH=$(go env GOPATH)/bin:${PATH}"
             - go get -u github.com/mitchellh/gox@v1.0.1
             - go get -u github.com/golangci/golangci-lint@v1.25.1
             - make
+            - $(go env GOPATH)/bin/hashicorp-vault-monitor -version
             - make test
             - make lint
             - make vet
-            - $GOPATH/bin/hashicorp-vault-monitor -version
