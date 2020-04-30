@@ -11,6 +11,10 @@ blocks:
       env_vars:
         - name: GO111MODULE
           value: "on"
+      prologue:
+        commands:
+          - mkdir -p "$(go env GOPATH)/bin"
+          - export "PATH=$(go env GOPATH)/bin:${PATH}"
       jobs:
         - name: Build and execute the tests
           commands:
@@ -21,4 +25,6 @@ blocks:
             - go get -u github.com/golangci/golangci-lint@v1.25.1
             - make
             - make test
+            - make lint
+            - make vet
             - $GOPATH/bin/hashicorp-vault-monitor -version
