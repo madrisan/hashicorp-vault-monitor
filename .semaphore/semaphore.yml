@@ -16,7 +16,7 @@ blocks:
           - mkdir -p "$(go env GOPATH)/bin"
           - export "PATH=$(go env GOPATH)/bin:${PATH}"
       jobs:
-        - name: Build and execute the tests
+        - name: Build with go 1.13 and execute the tests
           commands:
             - checkout
             - sem-version go 1.13
@@ -24,5 +24,3 @@ blocks:
             - go get -u github.com/golangci/golangci-lint@v1.25.1
             - make
             - make test
-            - make lint
-            - make vet
