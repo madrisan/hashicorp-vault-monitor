@@ -51,7 +51,7 @@ func (c *BaseCommand) Client() (*api.Client, error) {
 	}
 
 	if err := config.ReadEnvironment(); err != nil {
-		return nil, fmt.Errorf("failed to read environment")
+		return nil, fmt.Errorf("failed to read environment: %s", err)
 	}
 
 	if c.Address != "" && c.Address != addressDefault {
