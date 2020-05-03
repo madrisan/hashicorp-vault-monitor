@@ -6,7 +6,7 @@ agent:
     os_image: ubuntu1804
 
 blocks:
- - name: Build with Go 1.13
+ - name: Build and run tests
    task:
       env_vars:
         - name: GO111MODULE
@@ -20,6 +20,14 @@ blocks:
           commands:
             - checkout
             - sem-version go 1.13
+            - go get -u github.com/mitchellh/gox@v1.0.1
+            - go get -u github.com/golangci/golangci-lint@v1.25.1
+            - make
+            - make test
+        - name: Build with go 1.14 and execute the tests
+          commands:
+            - checkout
+            - sem-version go 1.14
             - go get -u github.com/mitchellh/gox@v1.0.1
             - go get -u github.com/golangci/golangci-lint@v1.25.1
             - make
