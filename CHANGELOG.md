@@ -1,3 +1,34 @@
+## 0.8.5 (May 5, 2020)
+
+BUG FIXES:
+
+ * Send all the messages to *stdout* when the Nagios outputter
+   (`-output=nagios`) is selected.
+   This is required because, as pointed out by *unix196*, Nagios shows an
+   empty output in case of warning and error messages sent to *stderr*
+   (if the stderr is not redirected to stdout).
+
+CHANGES:
+
+ * When the Nagios outputter is selected (`-output=nagios`), the messages
+   are now printed without any color.
+
+ * Documentation updates.
+
+IMPROVEMENTS:
+
+ * *hashicorp-vault-monitor* now uses Go's official dependency management
+   system, Go Modules, to manage dependencies.
+
+ * Include the error message in output when reading the environment variables.
+   This will help debug the issues related to environment variables loading.
+   Pull Request by *maxadamo*. Thanks!
+
+ * Travis CI now uses go 1.14.x as build target.
+
+ * Add CircleCI and SemaphoreCI continuous integration configurations
+   with go 1.13.x and 1.14.x as build targets.
+
 ## 0.8.4 (March 10, 2020)
 
 IMPROVEMENTS:
