@@ -113,8 +113,7 @@ func Run(args []string) int {
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
-					OutputFormat:      "default",
-					UnknownAsCritical: false,
+					OutputFormat: "default",
 				},
 			}, nil
 		},
