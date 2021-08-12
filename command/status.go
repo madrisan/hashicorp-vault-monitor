@@ -49,6 +49,9 @@ Usage: hashicorp-vault-monitor status [options]
     -output=<string>
        Specify an output format. Can be 'default' or 'nagios'.
 
+    -unknown-as-critical
+       Every unknown error is treated as critical(only relevant for output="nagios").
+
   The exit code reflects the seal status:
 
       - %d - the vault node is unsealed
@@ -67,6 +70,7 @@ func (c *StatusCommand) Run(args []string) int {
 	cmdFlags.Usage = func() { c.UI.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
+	cmdFlags.BoolVar(&c.UnknownAsCritical, "unknown-as-critical", false, unknownAsCriticalDescr)
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.UI.Error(err.Error())
@@ -93,8 +97,13 @@ func (c *StatusCommand) Run(args []string) int {
 
 	status, err := client.Sys().SealStatus()
 	if err != nil {
-		out.Undefined("error checking seal status: %s", err)
-		return StateUndefined
+		if c.UnknownAsCritical {
+			out.Critical("error checking seal status: %s", err)
+			return StateCritical
+		} else {
+			out.Undefined("error checking seal status: %s", err)
+			return StateUndefined
+		}
 	}
 
 	if status.Sealed {

@@ -42,7 +42,8 @@ const (
 	warningDescr  = "Warning threshold (default: %s)"
 	criticalDescr = "Critical threshold (default: %s)"
 
-	outputFormatDescr = "Select an output format ('default' or 'nagios')"
+	outputFormatDescr      = "Select an output format ('default' or 'nagios')"
+	unknownAsCriticalDescr = "Unknown status is always critical"
 )
 
 // Run initializes a CLI instance and its command state engine.
@@ -112,7 +113,8 @@ func Run(args []string) int {
 						OutputColor: cli.UiColorGreen,
 						WarnColor:   cli.UiColorYellow,
 					},
-					OutputFormat: "default",
+					OutputFormat:      "default",
+					UnknownAsCritical: false,
 				},
 			}, nil
 		},

@@ -25,12 +25,13 @@ import (
 
 // BaseCommand is a Command that holds the common command options
 type BaseCommand struct {
-	Address       string
-	OutputFormat  string
-	Token         string
-	TokenAccessor string
-	UI            cli.Ui
-	client        *api.Client
+	Address           string
+	OutputFormat      string
+	Token             string
+	TokenAccessor     string
+	UI                cli.Ui
+	client            *api.Client
+	UnknownAsCritical bool
 }
 
 // Client returs a new HTTP API Vault client for the given configuration
