@@ -50,13 +50,15 @@ Usage: hashicorp-vault-monitor status [options]
        Specify an output format. Can be 'default' or 'nagios'.
 
     -unknown-as-critical
-       Every unknown error is treated as critical(only relevant for output="nagios").
+       Every unknown error is treated as critical.
 
   The exit code reflects the seal status:
 
       - %d - the vault node is unsealed
       - %d - the vault node is sealed
       - %d - an error occurred
+
+  The last case will be merged into the second one if -unknown-as-critical is selected.
 
   For a full list of examples, please see the online documentation.
 `
