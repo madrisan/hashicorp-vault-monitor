@@ -22,7 +22,7 @@ dev: prep
 bootstrap:
 	@for tool in  $(EXTERNAL_TOOLS) ; do \
 		echo "Installing/Updating $$tool" ; \
-		GO111MODULE=on go get -u $$tool; \
+		GO111MODULE=on go install $$tool; \
 	done
 
 cover:
