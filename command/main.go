@@ -44,6 +44,7 @@ const (
 
 	outputFormatDescr      = "Select an output format ('default' or 'nagios')"
 	unknownAsCriticalDescr = "Unknown status is always critical"
+	sealedAsWarningDescr   = "Sealed status is always warning"
 )
 
 // Run initializes a CLI instance and its command state engine.
