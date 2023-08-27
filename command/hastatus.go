@@ -49,6 +49,9 @@ Usage: hashicorp-vault-monitor hastatus [options]
     -output=<string>
        Specify an output format. Can be 'default' or 'nagios'.
 
+    -sealed-as-warning
+       Sealed status is treated as warning.
+
   The exit code reflects the seal status:
 
       - %d - the HA cluster is enabled and the node is active or in standby mode
@@ -68,6 +71,7 @@ func (c *HAStatusCommand) Run(args []string) int {
 	cmdFlags.Usage = func() { c.UI.Output(c.Help()) }
 	cmdFlags.StringVar(&c.Address, "address", addressDefault, addressDescr)
 	cmdFlags.StringVar(&c.OutputFormat, "output", "default", outputFormatDescr)
+	cmdFlags.BoolVar(&c.SealedAsWarning, "sealed-as-warning", false, sealedAsWarningDescr)
 
 	if err := cmdFlags.Parse(args); err != nil {
 		c.UI.Error(err.Error())
@@ -99,11 +103,19 @@ func (c *HAStatusCommand) Run(args []string) int {
 	}
 
 	if status.Sealed {
-		out.Critical("Vault (%s) is sealed! Unseal Progress: %d/%d",
+    if c.SealedAsWarning {
+			out.Warning("Vault (%s) is sealed! Unseal Progress: %d/%d",
 			status.ClusterName,
 			status.Progress,
 			status.T)
-		return StateCritical
+			return StateWarning
+		} else {
+			out.Critical("Vault (%s) is sealed! Unseal Progress: %d/%d",
+			status.ClusterName,
+			status.Progress,
+			status.T)
+			return StateCritical
+		}
 	}
 
 	leaderStatus, err := client.Sys().Leader()

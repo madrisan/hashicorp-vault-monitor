@@ -32,6 +32,7 @@ type BaseCommand struct {
 	UI                cli.Ui
 	client            *api.Client
 	UnknownAsCritical bool
+	SealedAsWarning   bool
 }
 
 // Client returs a new HTTP API Vault client for the given configuration
