@@ -115,15 +115,15 @@ func (c *StatusCommand) Run(args []string) int {
 	if status.Sealed {
 		if c.SealedAsWarning {
 			out.Warning("Vault (%s) is sealed! Unseal Progress: %d/%d",
-			status.ClusterName,
-			status.Progress,
-			status.T)
+				status.ClusterName,
+				status.Progress,
+				status.T)
 			return StateWarning
 		} else {
 			out.Critical("Vault (%s) is sealed! Unseal Progress: %d/%d",
-			status.ClusterName,
-			status.Progress,
-			status.T)
+				status.ClusterName,
+				status.Progress,
+				status.T)
 			return StateCritical
 		}
 	}
