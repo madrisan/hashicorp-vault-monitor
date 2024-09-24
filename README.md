@@ -8,7 +8,7 @@
 
 # Hashicorp Vault Monitor [![GoDoc](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor?status.png)](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor)
 
-![](images/HashiCorp-Vault-logo.png?raw=true "HashiCorp Vault")
+![](images/HashiCorp-Vault-Monitor-logo.png?raw=true "HashiCorp Vault")
 
 ## How to build the source code
 ```
