@@ -1,27 +1,49 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package kv
 
 import (
 	"context"
-	"strings"
+	"encoding/json"
+	"fmt"
+	"net/http"
 
-	"github.com/hashicorp/vault/helper/locksutil"
-	"github.com/hashicorp/vault/logical"
-	"github.com/hashicorp/vault/logical/framework"
+	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/helper/locksutil"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 // pathDestroy returns the path configuration for the destroy endpoint
 func pathDestroy(b *versionedKVBackend) *framework.Path {
 	return &framework.Path{
-		Pattern: "destroy/.*",
+		Pattern: "destroy/" + framework.MatchAllRegex("path"),
+
+		DisplayAttrs: &framework.DisplayAttributes{
+			OperationPrefix: operationPrefixKVv2,
+			OperationVerb:   "destroy",
+			OperationSuffix: "versions",
+		},
+
 		Fields: map[string]*framework.FieldSchema{
+			"path": {
+				Type:        framework.TypeString,
+				Description: "Location of the secret.",
+			},
 			"versions": {
 				Type:        framework.TypeCommaIntSlice,
 				Description: "The versions to destroy. Their data will be permanently deleted.",
 			},
 		},
-		Callbacks: map[logical.Operation]framework.OperationFunc{
-			logical.UpdateOperation: b.upgradeCheck(b.pathDestroyWrite()),
-			logical.CreateOperation: b.upgradeCheck(b.pathDestroyWrite()),
+		Operations: map[logical.Operation]framework.OperationHandler{
+			logical.UpdateOperation: &framework.PathOperation{
+				Callback: b.upgradeCheck(b.pathDestroyWrite()),
+				Responses: map[int][]framework.Response{
+					http.StatusNoContent: {{
+						Description: http.StatusText(http.StatusNoContent),
+					}},
+				},
+			},
 		},
 
 		HelpSynopsis:    destroyHelpSyn,
@@ -31,7 +53,7 @@ func pathDestroy(b *versionedKVBackend) *framework.Path {
 
 func (b *versionedKVBackend) pathDestroyWrite() framework.OperationFunc {
 	return func(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-		key := strings.TrimPrefix(req.Path, "destroy/")
+		key := data.Get("path").(string)
 
 		versions := data.Get("versions").([]int)
 		if len(versions) == 0 {
@@ -79,7 +101,15 @@ func (b *versionedKVBackend) pathDestroyWrite() framework.OperationFunc {
 				return nil, err
 			}
 		}
-
+		marshaledVersions, err := json.Marshal(&versions)
+		if err != nil {
+			return nil, err
+		}
+		kvEvent(ctx, b.Backend, "destroy", "destroy/"+key, "", true, 2,
+			"current_version", fmt.Sprintf("%d", meta.CurrentVersion),
+			"oldest_version", fmt.Sprintf("%d", meta.OldestVersion),
+			"destroyed_versions", string(marshaledVersions),
+		)
 		return nil, nil
 	}
 }

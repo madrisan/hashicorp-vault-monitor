@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/denisenkom/go-mssqldb/internal/cp"
+	"github.com/denisenkom/go-mssqldb/internal/decimal"
 )
 
 // fixed-length data types
@@ -62,6 +63,7 @@ const (
 	typeNChar      = 0xef
 	typeXml        = 0xf1
 	typeUdt        = 0xf0
+	typeTvp        = 0xf3
 
 	// long length types
 	typeText    = 0x23
@@ -72,6 +74,16 @@ const (
 const _PLP_NULL = 0xFFFFFFFFFFFFFFFF
 const _UNKNOWN_PLP_LEN = 0xFFFFFFFFFFFFFFFE
 const _PLP_TERMINATOR = 0x00000000
+
+// TVP COLUMN FLAGS
+const _TVP_END_TOKEN = 0x00
+const _TVP_ROW_TOKEN = 0x01
+
+// TVP_COLMETADATA definition
+// https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-tds/0dfc5367-a388-4c92-9ba4-4d28e775acbc
+const (
+	fDefault = 0x200
+)
 
 // TYPE_INFO rule
 // http://msdn.microsoft.com/en-us/library/dd358284.aspx
@@ -145,6 +157,8 @@ func writeTypeInfo(w io.Writer, ti *typeInfo) (err error) {
 		// those are fixed length
 		// https://msdn.microsoft.com/en-us/library/dd341171.aspx
 		ti.Writer = writeFixedType
+	case typeTvp:
+		ti.Writer = writeFixedType
 	default: // all others are VARLENTYPE
 		err = writeVarLen(w, ti)
 		if err != nil {
@@ -162,6 +176,7 @@ func writeFixedType(w io.Writer, ti typeInfo, buf []byte) (err error) {
 // https://msdn.microsoft.com/en-us/library/dd358341.aspx
 func writeVarLen(w io.Writer, ti *typeInfo) (err error) {
 	switch ti.TypeId {
+
 	case typeDateN:
 		ti.Writer = writeByteLenType
 	case typeTimeN, typeDateTime2N, typeDateTimeOffsetN:
@@ -203,6 +218,7 @@ func writeVarLen(w io.Writer, ti *typeInfo) (err error) {
 		ti.Writer = writeByteLenType
 	case typeBigVarBin, typeBigVarChar, typeBigBinary, typeBigChar,
 		typeNVarChar, typeNChar, typeXml, typeUdt:
+
 		// short len types
 		if ti.Size > 8000 || ti.Size == 0 {
 			if err = binary.Write(w, binary.LittleEndian, uint16(0xffff)); err != nil {
@@ -655,7 +671,7 @@ func readPLPType(ti *typeInfo, r *tdsBuffer) interface{} {
 	default:
 		buf = bytes.NewBuffer(make([]byte, 0, size))
 	}
-	for true {
+	for {
 		chunksize := r.uint32()
 		if chunksize == 0 {
 			break
@@ -680,6 +696,10 @@ func readPLPType(ti *typeInfo, r *tdsBuffer) interface{} {
 }
 
 func writePLPType(w io.Writer, ti typeInfo, buf []byte) (err error) {
+	if buf == nil {
+		err = binary.Write(w, binary.LittleEndian, uint64(_PLP_NULL))
+		return
+	}
 	if err = binary.Write(w, binary.LittleEndian, uint64(_UNKNOWN_PLP_LEN)); err != nil {
 		return
 	}
@@ -797,7 +817,6 @@ func readVarLen(ti *typeInfo, r *tdsBuffer) {
 	default:
 		badStreamPanicf("Invalid type %d", ti.TypeId)
 	}
-	return
 }
 
 func decodeMoney(buf []byte) []byte {
@@ -809,12 +828,12 @@ func decodeMoney(buf []byte) []byte {
 		uint64(buf[1])<<40 |
 		uint64(buf[2])<<48 |
 		uint64(buf[3])<<56)
-	return scaleBytes(strconv.FormatInt(money, 10), 4)
+	return decimal.ScaleBytes(strconv.FormatInt(money, 10), 4)
 }
 
 func decodeMoney4(buf []byte) []byte {
 	money := int32(binary.LittleEndian.Uint32(buf[0:4]))
-	return scaleBytes(strconv.FormatInt(int64(money), 10), 4)
+	return decimal.ScaleBytes(strconv.FormatInt(int64(money), 10), 4)
 }
 
 func decodeGuid(buf []byte) []byte {
@@ -824,17 +843,15 @@ func decodeGuid(buf []byte) []byte {
 }
 
 func decodeDecimal(prec uint8, scale uint8, buf []byte) []byte {
-	var sign uint8
-	sign = buf[0]
-	dec := Decimal{
-		positive: sign != 0,
-		prec:     prec,
-		scale:    scale,
-	}
+	sign := buf[0]
+	var dec decimal.Decimal
+	dec.SetPositive(sign != 0)
+	dec.SetPrec(prec)
+	dec.SetScale(scale)
 	buf = buf[1:]
 	l := len(buf) / 4
 	for i := 0; i < l; i++ {
-		dec.integer[i] = binary.LittleEndian.Uint32(buf[0:4])
+		dec.SetInteger(binary.LittleEndian.Uint32(buf[0:4]), uint8(i))
 		buf = buf[4:]
 	}
 	return dec.Bytes()
@@ -1177,8 +1194,8 @@ func makeDecl(ti typeInfo) string {
 	case typeBigChar, typeChar:
 		return fmt.Sprintf("char(%d)", ti.Size)
 	case typeBigVarChar, typeVarChar:
-		if ti.Size > 4000 || ti.Size == 0 {
-			return fmt.Sprintf("varchar(max)")
+		if ti.Size > 8000 || ti.Size == 0 {
+			return "varchar(max)"
 		} else {
 			return fmt.Sprintf("varchar(%d)", ti.Size)
 		}
@@ -1219,6 +1236,11 @@ func makeDecl(ti typeInfo) string {
 		return ti.UdtInfo.TypeName
 	case typeGuid:
 		return "uniqueidentifier"
+	case typeTvp:
+		if ti.UdtInfo.SchemaName != "" {
+			return fmt.Sprintf("%s.%s READONLY", ti.UdtInfo.SchemaName, ti.UdtInfo.TypeName)
+		}
+		return fmt.Sprintf("%s READONLY", ti.UdtInfo.TypeName)
 	default:
 		panic(fmt.Sprintf("not implemented makeDecl for type %#x", ti.TypeId))
 	}
@@ -1337,12 +1359,13 @@ func makeGoLangTypeName(ti typeInfo) string {
 // not a variable length type ok should return false.
 // If length is not limited other than system limits, it should return math.MaxInt64.
 // The following are examples of returned values for various types:
-//   TEXT          (math.MaxInt64, true)
-//   varchar(10)   (10, true)
-//   nvarchar(10)  (10, true)
-//   decimal       (0, false)
-//   int           (0, false)
-//   bytea(30)     (30, true)
+//
+//	TEXT          (math.MaxInt64, true)
+//	varchar(10)   (10, true)
+//	nvarchar(10)  (10, true)
+//	decimal       (0, false)
+//	int           (0, false)
+//	bytea(30)     (30, true)
 func makeGoLangTypeLength(ti typeInfo) (int64, bool) {
 	switch ti.TypeId {
 	case typeInt1:
@@ -1448,7 +1471,7 @@ func makeGoLangTypeLength(ti typeInfo) (int64, bool) {
 	case typeVariant:
 		return 0, false
 	case typeBigBinary:
-		return 0, false
+		return int64(ti.Size), true
 	default:
 		panic(fmt.Sprintf("not implemented makeGoLangTypeLength for type %d", ti.TypeId))
 	}
@@ -1460,12 +1483,13 @@ func makeGoLangTypeLength(ti typeInfo) (int64, bool) {
 // not a variable length type ok should return false.
 // If length is not limited other than system limits, it should return math.MaxInt64.
 // The following are examples of returned values for various types:
-//   TEXT          (math.MaxInt64, true)
-//   varchar(10)   (10, true)
-//   nvarchar(10)  (10, true)
-//   decimal       (0, false)
-//   int           (0, false)
-//   bytea(30)     (30, true)
+//
+//	TEXT          (math.MaxInt64, true)
+//	varchar(10)   (10, true)
+//	nvarchar(10)  (10, true)
+//	decimal       (0, false)
+//	int           (0, false)
+//	bytea(30)     (30, true)
 func makeGoLangTypePrecisionScale(ti typeInfo) (int64, int64, bool) {
 	switch ti.TypeId {
 	case typeInt1:

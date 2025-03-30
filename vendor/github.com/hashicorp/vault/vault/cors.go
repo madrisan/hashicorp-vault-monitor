@@ -1,14 +1,18 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package vault
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
-	"github.com/hashicorp/errwrap"
-	"github.com/hashicorp/vault/helper/strutil"
-	"github.com/hashicorp/vault/logical"
+	"github.com/hashicorp/go-secure-stdlib/strutil"
+	"github.com/hashicorp/vault/sdk/helper/consts"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 const (
@@ -22,10 +26,11 @@ var StdAllowedHeaders = []string{
 	"X-Vault-AWS-IAM-Server-ID",
 	"X-Vault-MFA",
 	"X-Vault-No-Request-Forwarding",
-	"X-Vault-Token",
 	"X-Vault-Wrap-Format",
 	"X-Vault-Wrap-TTL",
 	"X-Vault-Policy-Override",
+	"Authorization",
+	consts.AuthHeaderName,
 }
 
 // CORSConfig stores the state of the CORS configuration.
@@ -51,11 +56,11 @@ func (c *Core) saveCORSConfig(ctx context.Context) error {
 
 	entry, err := logical.StorageEntryJSON("cors", localConfig)
 	if err != nil {
-		return errwrap.Wrapf("failed to create CORS config entry: {{err}}", err)
+		return fmt.Errorf("failed to create CORS config entry: %w", err)
 	}
 
 	if err := view.Put(ctx, entry); err != nil {
-		return errwrap.Wrapf("failed to save CORS config: {{err}}", err)
+		return fmt.Errorf("failed to save CORS config: %w", err)
 	}
 
 	return nil
@@ -68,7 +73,7 @@ func (c *Core) loadCORSConfig(ctx context.Context) error {
 	// Load the config in
 	out, err := view.Get(ctx, "cors")
 	if err != nil {
-		return errwrap.Wrapf("failed to read CORS config: {{err}}", err)
+		return fmt.Errorf("failed to read CORS config: %w", err)
 	}
 	if out == nil {
 		return nil
@@ -106,7 +111,7 @@ func (c *CORSConfig) Enable(ctx context.Context, urls []string, headers []string
 	c.AllowedOrigins = urls
 
 	// Start with the standard headers to Vault accepts.
-	c.AllowedHeaders = append(c.AllowedHeaders, StdAllowedHeaders...)
+	c.AllowedHeaders = append([]string{}, StdAllowedHeaders...)
 
 	// Allow the user to add additional headers to the list of
 	// headers allowed on cross-origin requests.

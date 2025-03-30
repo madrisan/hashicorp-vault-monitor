@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package vault
 
 import (
@@ -5,7 +8,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
@@ -15,16 +17,20 @@ import (
 	mathrand "math/rand"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/hashicorp/errwrap"
-	"github.com/hashicorp/go-uuid"
-	"github.com/hashicorp/vault/helper/jsonutil"
+	uuid "github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/vault/sdk/helper/jsonutil"
+	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/hashicorp/vault/sdk/physical"
+	"github.com/hashicorp/vault/vault/cluster"
 )
 
 const (
 	// Storage path where the local cluster name and identifier are stored
 	coreLocalClusterInfoPath = "core/cluster/local/info"
+	coreLocalClusterNamePath = "core/cluster/local/name"
 
 	corePrivateKeyTypeP521    = "p521"
 	corePrivateKeyTypeED25519 = "ed25519"
@@ -34,20 +40,14 @@ const (
 )
 
 var (
-	ErrCannotForward = errors.New("cannot forward request; no connection or address not known")
+	ErrCannotForward          = errors.New("cannot forward request; no connection or address not known")
+	ErrCannotForwardLocalOnly = errors.New("cannot forward local-only request")
 )
 
-type ReplicatedClusters struct {
-	DR          *ReplicatedCluster
-	Performance *ReplicatedCluster
-}
-
-// This can be one of a few key types so the different params may or may not be filled
-type clusterKeyParams struct {
-	Type string   `json:"type" structs:"type" mapstructure:"type"`
-	X    *big.Int `json:"x" structs:"x" mapstructure:"x"`
-	Y    *big.Int `json:"y" structs:"y" mapstructure:"y"`
-	D    *big.Int `json:"d" structs:"d" mapstructure:"d"`
+type ClusterLeaderParams struct {
+	LeaderUUID         string
+	LeaderRedirectAddr string
+	LeaderClusterAddr  string
 }
 
 // Structure representing the storage entry that holds cluster information
@@ -63,19 +63,31 @@ type Cluster struct {
 // when Vault is sealed.
 func (c *Core) Cluster(ctx context.Context) (*Cluster, error) {
 	var cluster Cluster
+	var logicalEntry *logical.StorageEntry
+	var physicalEntry *physical.Entry
 
 	// Fetch the storage entry. This call fails when Vault is sealed.
-	entry, err := c.barrier.Get(ctx, coreLocalClusterInfoPath)
+	logicalEntry, err := c.barrier.Get(ctx, coreLocalClusterInfoPath)
 	if err != nil {
-		return nil, err
+		// Vault is sealed, pull cluster name from unencrypted storage
+		physicalEntry, err = c.physical.Get(ctx, coreLocalClusterNamePath)
+		if err != nil {
+			return nil, err
+		}
 	}
-	if entry == nil {
+	if logicalEntry == nil && physicalEntry == nil {
 		return &cluster, nil
 	}
 
 	// Decode the cluster information
-	if err = jsonutil.DecodeJSON(entry.Value, &cluster); err != nil {
-		return nil, errwrap.Wrapf("failed to decode cluster details: {{err}}", err)
+	var value []byte
+	if logicalEntry != nil {
+		value = logicalEntry.Value
+	} else {
+		value = physicalEntry.Value
+	}
+	if err = jsonutil.DecodeJSON(value, &cluster); err != nil {
+		return nil, fmt.Errorf("failed to decode cluster details: %w", err)
 	}
 
 	// Set in config file
@@ -140,7 +152,7 @@ func (c *Core) loadLocalClusterTLS(adv activeAdvertisement) (retErr error) {
 	cert, err := x509.ParseCertificate(adv.ClusterCert)
 	if err != nil {
 		c.logger.Error("failed parsing local cluster certificate", "error", err)
-		return errwrap.Wrapf("error parsing local cluster certificate: {{err}}", err)
+		return fmt.Errorf("error parsing local cluster certificate: %w", err)
 	}
 
 	c.localClusterParsedCert.Store(cert)
@@ -164,6 +176,7 @@ func (c *Core) setupCluster(ctx context.Context) error {
 	}
 
 	var modified bool
+	var generatedClusterName bool
 
 	if cluster == nil {
 		cluster = &Cluster{}
@@ -180,6 +193,7 @@ func (c *Core) setupCluster(ctx context.Context) error {
 			}
 
 			c.clusterName = fmt.Sprintf("vault-cluster-%08x", clusterNameBytes)
+			generatedClusterName = true
 		}
 
 		cluster.Name = c.clusterName
@@ -188,6 +202,10 @@ func (c *Core) setupCluster(ctx context.Context) error {
 		}
 		modified = true
 	}
+
+	// This is the first point at which the stored (or newly generated)
+	// cluster name is known.
+	c.metricSink.SetDefaultClusterName(cluster.Name)
 
 	if cluster.ID == "" {
 		c.logger.Debug("cluster ID not found, generating new")
@@ -208,7 +226,7 @@ func (c *Core) setupCluster(ctx context.Context) error {
 		// Create a private key
 		if c.localClusterPrivateKey.Load().(*ecdsa.PrivateKey) == nil {
 			c.logger.Debug("generating cluster private key")
-			key, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+			key, err := ecdsa.GenerateKey(elliptic.P521(), c.secureRandomReader)
 			if err != nil {
 				c.logger.Error("failed to generate local cluster key", "error", err)
 				return err
@@ -219,13 +237,12 @@ func (c *Core) setupCluster(ctx context.Context) error {
 
 		// Create a certificate
 		if c.localClusterCert.Load().([]byte) == nil {
-			c.logger.Debug("generating local cluster certificate")
-
 			host, err := uuid.GenerateUUID()
 			if err != nil {
 				return err
 			}
 			host = fmt.Sprintf("fw-%s", host)
+			c.logger.Debug("generating local cluster certificate", "host", host)
 			template := &x509.Certificate{
 				Subject: pkix.Name{
 					CommonName: host,
@@ -247,13 +264,13 @@ func (c *Core) setupCluster(ctx context.Context) error {
 			certBytes, err := x509.CreateCertificate(rand.Reader, template, template, c.localClusterPrivateKey.Load().(*ecdsa.PrivateKey).Public(), c.localClusterPrivateKey.Load().(*ecdsa.PrivateKey))
 			if err != nil {
 				c.logger.Error("error generating self-signed cert", "error", err)
-				return errwrap.Wrapf("unable to generate local cluster certificate: {{err}}", err)
+				return fmt.Errorf("unable to generate local cluster certificate: %w", err)
 			}
 
 			parsedCert, err := x509.ParseCertificate(certBytes)
 			if err != nil {
 				c.logger.Error("error parsing self-signed cert", "error", err)
-				return errwrap.Wrapf("error parsing generated certificate: {{err}}", err)
+				return fmt.Errorf("error parsing generated certificate: %w", err)
 			}
 
 			c.localClusterCert.Store(certBytes)
@@ -269,8 +286,8 @@ func (c *Core) setupCluster(ctx context.Context) error {
 			return err
 		}
 
-		// Store it
-		err = c.barrier.Put(ctx, &Entry{
+		// Store cluster information in logical storage
+		err = c.barrier.Put(ctx, &logical.StorageEntry{
 			Key:   coreLocalClusterInfoPath,
 			Value: rawCluster,
 		})
@@ -278,18 +295,61 @@ func (c *Core) setupCluster(ctx context.Context) error {
 			c.logger.Error("failed to store cluster details", "error", err)
 			return err
 		}
+
+		// Store only cluster name in physical storage, but only if name isn't provided in config
+		if generatedClusterName {
+			rawCluster, err = json.Marshal(&Cluster{Name: cluster.Name})
+			if err != nil {
+				c.logger.Error("failed to marshal cluster name", "error", err)
+				return err
+			}
+
+			err = c.physical.Put(ctx, &physical.Entry{
+				Key:   coreLocalClusterNamePath,
+				Value: rawCluster,
+			})
+			if err != nil {
+				c.logger.Error("failed to store cluster name", "error", err)
+				return err
+			}
+		} else {
+			// check to ensure there is no entry at coreLocalClusterNamePath
+			err = c.physical.Delete(ctx, coreLocalClusterNamePath)
+			if err != nil {
+				c.logger.Error("failed to clear cluster name", "error", err)
+				return err
+			}
+
+		}
 	}
 
+	c.clusterID.Store(cluster.ID)
 	return nil
 }
 
-// startClusterListener starts cluster request listeners during postunseal. It
+func (c *Core) loadCluster(ctx context.Context) error {
+	cluster, err := c.Cluster(ctx)
+	if err != nil {
+		c.logger.Error("failed to get cluster details", "error", err)
+		return err
+	}
+
+	c.clusterID.Store(cluster.ID)
+	return nil
+}
+
+// startClusterListener starts cluster request listeners during unseal. It
 // is assumed that the state lock is held while this is run. Right now this
-// only starts forwarding listeners; it's TBD whether other request types will
-// be built in the same mechanism or started independently.
+// only starts cluster listeners. Once the listener is started handlers/clients
+// can start being registered to it.
 func (c *Core) startClusterListener(ctx context.Context) error {
-	if c.clusterAddr == "" {
+	if c.ClusterAddr() == "" {
 		c.logger.Info("clustering disabled, not starting listeners")
+		return nil
+	}
+
+	if c.getClusterListener() != nil {
+		c.logger.Warn("cluster listener is already started")
 		return nil
 	}
 
@@ -300,83 +360,89 @@ func (c *Core) startClusterListener(ctx context.Context) error {
 
 	c.logger.Debug("starting cluster listeners")
 
-	err := c.startForwarding(ctx)
+	networkLayer := c.clusterNetworkLayer
+
+	if networkLayer == nil {
+		tcpLogger := c.logger.Named("cluster-listener.tcp")
+		networkLayer = cluster.NewTCPLayer(c.clusterListenerAddrs, tcpLogger)
+		c.AddLogger(tcpLogger)
+	}
+
+	listenerLogger := c.logger.Named("cluster-listener")
+	c.clusterListener.Store(cluster.NewListener(networkLayer,
+		c.clusterCipherSuites,
+		listenerLogger,
+		5*c.clusterHeartbeatInterval))
+
+	c.AddLogger(listenerLogger)
+
+	err := c.getClusterListener().Run(ctx)
 	if err != nil {
 		return err
+	}
+	if strings.HasSuffix(c.ClusterAddr(), ":0") {
+		// If we listened on port 0, record the port the OS gave us.
+		c.SetClusterAddr(fmt.Sprintf("https://%s", c.getClusterListener().Addr()))
+	}
+
+	if len(c.ClusterAddr()) != 0 {
+		if err := c.getClusterListener().SetAdvertiseAddr(c.ClusterAddr()); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// stopClusterListener stops any existing listeners during preseal. It is
+func (c *Core) ClusterAddr() string {
+	return c.clusterAddr.Load().(string)
+}
+
+func (c *Core) SetClusterAddr(s string) {
+	c.clusterAddr.Store(s)
+	rb := c.getRaftBackend()
+
+	if rb != nil && c.clusterAddrBridge != nil {
+		c.clusterAddrBridge.UpdateClusterAddr(c.GetRaftNodeID(), s)
+	}
+}
+
+func (c *Core) getClusterListener() *cluster.Listener {
+	cl := c.clusterListener.Load()
+	if cl == nil {
+		return nil
+	}
+	return cl.(*cluster.Listener)
+}
+
+// stopClusterListener stops any existing listeners during seal. It is
 // assumed that the state lock is held while this is run.
 func (c *Core) stopClusterListener() {
-	if c.clusterAddr == "" {
-
+	clusterListener := c.getClusterListener()
+	if clusterListener == nil {
 		c.logger.Debug("clustering disabled, not stopping listeners")
 		return
 	}
 
-	if !c.clusterListenersRunning {
-		c.logger.Info("cluster listeners not running")
-		return
-	}
 	c.logger.Info("stopping cluster listeners")
 
-	// Tell the goroutine managing the listeners to perform the shutdown
-	// process
-	c.clusterListenerShutdownCh <- struct{}{}
-
-	// The reason for this loop-de-loop is that we may be unsealing again
-	// quickly, and if the listeners are not yet closed, we will get socket
-	// bind errors. This ensures proper ordering.
-
-	c.logger.Debug("waiting for success notification while stopping cluster listeners")
-	<-c.clusterListenerShutdownSuccessCh
-	c.clusterListenersRunning = false
+	clusterListener.Stop()
+	c.clusterListener.Store((*cluster.Listener)(nil))
 
 	c.logger.Info("cluster listeners successfully shut down")
 }
 
-// ClusterTLSConfig generates a TLS configuration based on the local/replicated
-// cluster key and cert.
-func (c *Core) ClusterTLSConfig(ctx context.Context, repClusters *ReplicatedClusters, perfStandbyCluster *ReplicatedCluster) (*tls.Config, error) {
-	// Using lookup functions allows just-in-time lookup of the current state
-	// of clustering as connections come and go
-
-	tlsConfig := &tls.Config{
-		ClientAuth:           tls.RequireAndVerifyClientCert,
-		GetCertificate:       clusterTLSServerLookup(ctx, c, repClusters, perfStandbyCluster),
-		GetClientCertificate: clusterTLSClientLookup(ctx, c, repClusters, perfStandbyCluster),
-		GetConfigForClient:   clusterTLSServerConfigLookup(ctx, c, repClusters, perfStandbyCluster),
-		MinVersion:           tls.VersionTLS12,
-		CipherSuites:         c.clusterCipherSuites,
-	}
-
-	parsedCert := c.localClusterParsedCert.Load().(*x509.Certificate)
-	currCert := c.localClusterCert.Load().([]byte)
-	localCert := make([]byte, len(currCert))
-	copy(localCert, currCert)
-
-	if parsedCert != nil {
-		tlsConfig.ServerName = parsedCert.Subject.CommonName
-
-		pool := x509.NewCertPool()
-		pool.AddCert(parsedCert)
-		tlsConfig.RootCAs = pool
-		tlsConfig.ClientCAs = pool
-	}
-
-	return tlsConfig, nil
-}
-
 func (c *Core) SetClusterListenerAddrs(addrs []*net.TCPAddr) {
 	c.clusterListenerAddrs = addrs
-	if c.clusterAddr == "" && len(addrs) == 1 {
-		c.clusterAddr = fmt.Sprintf("https://%s", addrs[0].String())
+	if c.ClusterAddr() == "" && len(addrs) == 1 {
+		c.clusterAddr.Store(fmt.Sprintf("https://%s", addrs[0].String()))
 	}
 }
 
 func (c *Core) SetClusterHandler(handler http.Handler) {
 	c.clusterHandler = handler
+}
+
+func (c *Core) ClusterID() string {
+	return c.clusterID.Load()
 }

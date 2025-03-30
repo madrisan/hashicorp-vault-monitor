@@ -1,41 +1,37 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package kv
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 
-	"github.com/hashicorp/vault/helper/jsonutil"
-	"github.com/hashicorp/vault/helper/parseutil"
-	"github.com/hashicorp/vault/helper/wrapping"
-	"github.com/hashicorp/vault/logical"
-	"github.com/hashicorp/vault/logical/framework"
+	"github.com/hashicorp/go-secure-stdlib/parseutil"
+	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/helper/jsonutil"
+	"github.com/hashicorp/vault/sdk/helper/wrapping"
+	"github.com/hashicorp/vault/sdk/logical"
 )
-
-type Passthrough interface {
-	handleRead() framework.OperationFunc
-	handleWrite() framework.OperationFunc
-	handleDelete() framework.OperationFunc
-	handleList() framework.OperationFunc
-	handleExistenceCheck() framework.ExistenceFunc
-}
 
 // PassthroughBackendFactory returns a PassthroughBackend
 // with leases switched off
 func PassthroughBackendFactory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
-	return LeaseSwitchedPassthroughBackend(ctx, conf, false)
+	return LeaseSwitchedPassthroughBackendFactory(ctx, conf, false)
 }
 
 // LeasedPassthroughBackendFactory returns a PassthroughBackend
 // with leases switched on
 func LeasedPassthroughBackendFactory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
-	return LeaseSwitchedPassthroughBackend(ctx, conf, true)
+	return LeaseSwitchedPassthroughBackendFactory(ctx, conf, true)
 }
 
-// LeaseSwitchedPassthroughBackend returns a PassthroughBackend
+// LeaseSwitchedPassthroughBackendFactory returns a PassthroughBackend
 // with leases switched on or off
-func LeaseSwitchedPassthroughBackend(ctx context.Context, conf *logical.BackendConfig, leases bool) (logical.Backend, error) {
+func LeaseSwitchedPassthroughBackendFactory(ctx context.Context, conf *logical.BackendConfig, leases bool) (logical.Backend, error) {
 	b := &PassthroughBackend{
 		generateLeases: leases,
 	}
@@ -51,15 +47,78 @@ func LeaseSwitchedPassthroughBackend(ctx context.Context, conf *logical.BackendC
 		},
 
 		Paths: []*framework.Path{
-			&framework.Path{
-				Pattern: ".*",
+			{
+				Pattern: framework.MatchAllRegex("path"),
 
-				Callbacks: map[logical.Operation]framework.OperationFunc{
-					logical.ReadOperation:   b.handleRead(),
-					logical.CreateOperation: b.handleWrite(),
-					logical.UpdateOperation: b.handleWrite(),
-					logical.DeleteOperation: b.handleDelete(),
-					logical.ListOperation:   b.handleList(),
+				DisplayAttrs: &framework.DisplayAttributes{
+					OperationPrefix: operationPrefixKVv1,
+				},
+
+				Fields: map[string]*framework.FieldSchema{
+					"path": {
+						Type:        framework.TypeString,
+						Description: "Location of the secret.",
+					},
+				},
+
+				// The regex and field definition above are purely for the benefit of OpenAPI and generated
+				// documentation. The actual request processing functions consult req.Path directly.
+				// See documentation of handleReadOrRenew for more detail.
+
+				TakesArbitraryInput: true,
+
+				Operations: map[logical.Operation]framework.OperationHandler{
+					logical.ReadOperation: &framework.PathOperation{
+						Callback: b.handleReadOrRenew(),
+						DisplayAttrs: &framework.DisplayAttributes{
+							OperationVerb: "read",
+						},
+						Responses: map[int][]framework.Response{
+							http.StatusOK: {{
+								Description: http.StatusText(http.StatusOK),
+								Fields:      nil, // dynamic fields
+							}},
+						},
+					},
+					logical.CreateOperation: &framework.PathOperation{
+						Callback: b.handleWrite(),
+						DisplayAttrs: &framework.DisplayAttributes{
+							OperationVerb: "write",
+						},
+						Responses: map[int][]framework.Response{
+							http.StatusNoContent: {{
+								Description: http.StatusText(http.StatusNoContent),
+							}},
+						},
+					},
+					logical.UpdateOperation: &framework.PathOperation{
+						Callback: b.handleWrite(),
+						DisplayAttrs: &framework.DisplayAttributes{
+							OperationVerb: "write",
+						},
+						Responses: map[int][]framework.Response{
+							http.StatusNoContent: {{
+								Description: http.StatusText(http.StatusNoContent),
+							}},
+						},
+					},
+					logical.DeleteOperation: &framework.PathOperation{
+						Callback: b.handleDelete(),
+						DisplayAttrs: &framework.DisplayAttributes{
+							OperationVerb: "delete",
+						},
+						Responses: map[int][]framework.Response{
+							http.StatusNoContent: {{
+								Description: http.StatusText(http.StatusNoContent),
+							}},
+						},
+					},
+					logical.ListOperation: &framework.PathOperation{
+						Callback: b.handleList(),
+						DisplayAttrs: &framework.DisplayAttributes{
+							OperationVerb: "list",
+						},
+					},
 				},
 
 				ExistenceCheck: b.handleExistenceCheck(),
@@ -69,10 +128,10 @@ func LeaseSwitchedPassthroughBackend(ctx context.Context, conf *logical.BackendC
 			},
 		},
 		Secrets: []*framework.Secret{
-			&framework.Secret{
+			{
 				Type: "kv",
 
-				Renew: b.handleRead(),
+				Renew: b.handleReadOrRenew(),
 				Revoke: func(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 					// This is a no-op
 					return nil, nil
@@ -82,7 +141,7 @@ func LeaseSwitchedPassthroughBackend(ctx context.Context, conf *logical.BackendC
 	}
 
 	if conf == nil {
-		return nil, fmt.Errorf("Configuation passed into backend is nil")
+		return nil, fmt.Errorf("configuration passed into backend is nil")
 	}
 	backend.Setup(ctx, conf)
 	b.Backend = backend
@@ -103,19 +162,26 @@ func (b *PassthroughBackend) handleExistenceCheck() framework.ExistenceFunc {
 	return func(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
 		out, err := req.Storage.Get(ctx, req.Path)
 		if err != nil {
-			return false, fmt.Errorf("existence check failed: %v", err)
+			return false, fmt.Errorf("existence check failed: %w", err)
 		}
 
 		return out != nil, nil
 	}
 }
 
-func (b *PassthroughBackend) handleRead() framework.OperationFunc {
+// handleReadOrRenew is called both for ReadOperations and RenewOperations. The RenewOperation case only applies when
+// using the rather obscure feature of mounting the backend with option leased_passthrough=true, and storing a duration
+// within the secret data itself, at the key "ttl" (preferred) or "lease" (deprecated). When that is done, we return a
+// renewable lease, and treat invoking the renew as a request to re-read the same path that was originally read. We use
+// req.Path, instead of a more conventional data.Get("path").(string), to read the requested path because the data
+// attached to a RenewOperation is NOT the original request data - it is the response data! Technically we need only do
+// this for this function, but for consistency we also use req.Path throughout the other handlers for this path pattern.
+func (b *PassthroughBackend) handleReadOrRenew() framework.OperationFunc {
 	return func(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 		// Read the path
 		out, err := req.Storage.Get(ctx, req.Path)
 		if err != nil {
-			return nil, fmt.Errorf("read failed: %v", err)
+			return nil, fmt.Errorf("read failed: %w", err)
 		}
 
 		// Fast-path the no data case
@@ -127,7 +193,7 @@ func (b *PassthroughBackend) handleRead() framework.OperationFunc {
 		var rawData map[string]interface{}
 
 		if err := jsonutil.DecodeJSON(out.Value, &rawData); err != nil {
-			return nil, fmt.Errorf("json decoding failed: %v", err)
+			return nil, fmt.Errorf("json decoding failed: %w", err)
 		}
 
 		var resp *logical.Response
@@ -174,12 +240,12 @@ func (b *PassthroughBackend) handleRead() framework.OperationFunc {
 	}
 }
 
-func (b *PassthroughBackend) GeneratesLeases() bool {
-	return b.generateLeases
-}
-
 func (b *PassthroughBackend) handleWrite() framework.OperationFunc {
 	return func(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+		if req.Path == "" {
+			return logical.ErrorResponse("missing path"), nil
+		}
+
 		// Check that some fields are given
 		if len(req.Data) == 0 {
 			return logical.ErrorResponse("missing data fields"), nil
@@ -188,7 +254,7 @@ func (b *PassthroughBackend) handleWrite() framework.OperationFunc {
 		// JSON encode the data
 		buf, err := json.Marshal(req.Data)
 		if err != nil {
-			return nil, fmt.Errorf("json encoding failed: %v", err)
+			return nil, fmt.Errorf("json encoding failed: %w", err)
 		}
 
 		// Write out a new key
@@ -197,8 +263,10 @@ func (b *PassthroughBackend) handleWrite() framework.OperationFunc {
 			Value: buf,
 		}
 		if err := req.Storage.Put(ctx, entry); err != nil {
-			return nil, fmt.Errorf("failed to write: %v", err)
+			return nil, fmt.Errorf("failed to write: %w", err)
 		}
+
+		kvEvent(ctx, b.Backend, "write", req.Path, req.Path, true, 1)
 
 		return nil, nil
 	}
@@ -210,6 +278,8 @@ func (b *PassthroughBackend) handleDelete() framework.OperationFunc {
 		if err := req.Storage.Delete(ctx, req.Path); err != nil {
 			return nil, err
 		}
+
+		kvEvent(ctx, b.Backend, "delete", req.Path, "", true, 1)
 
 		return nil, nil
 	}

@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package http
 
 import (
@@ -8,8 +11,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/hashicorp/vault/helper/consts"
 	"github.com/hashicorp/vault/helper/pgpkeys"
+	"github.com/hashicorp/vault/sdk/helper/consts"
 	"github.com/hashicorp/vault/vault"
 )
 
@@ -17,7 +20,7 @@ func handleSysRekeyInit(core *vault.Core, recovery bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		standby, _ := core.Standby()
 		if standby {
-			respondStandby(core, w, r.URL)
+			respondStandby(core, w, r)
 			return
 		}
 
@@ -108,7 +111,7 @@ func handleSysRekeyInitGet(ctx context.Context, core *vault.Core, recovery bool,
 func handleSysRekeyInitPut(ctx context.Context, core *vault.Core, recovery bool, w http.ResponseWriter, r *http.Request) {
 	// Parse the request
 	var req RekeyRequest
-	if err := parseRequest(r, w, &req); err != nil {
+	if _, err := parseJSONRequest(core.PerfStandby(), r, w, &req); err != nil {
 		respondError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -152,13 +155,13 @@ func handleSysRekeyUpdate(core *vault.Core, recovery bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		standby, _ := core.Standby()
 		if standby {
-			respondStandby(core, w, r.URL)
+			respondStandby(core, w, r)
 			return
 		}
 
 		// Parse the request
 		var req RekeyUpdateRequest
-		if err := parseRequest(r, w, &req); err != nil {
+		if _, err := parseJSONRequest(core.PerfStandby(), r, w, &req); err != nil {
 			respondError(w, http.StatusBadRequest, err)
 			return
 		}
@@ -225,7 +228,7 @@ func handleSysRekeyVerify(core *vault.Core, recovery bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		standby, _ := core.Standby()
 		if standby {
-			respondStandby(core, w, r.URL)
+			respondStandby(core, w, r)
 			return
 		}
 
@@ -306,7 +309,7 @@ func handleSysRekeyVerifyDelete(ctx context.Context, core *vault.Core, recovery 
 func handleSysRekeyVerifyPut(ctx context.Context, core *vault.Core, recovery bool, w http.ResponseWriter, r *http.Request) {
 	// Parse the request
 	var req RekeyVerificationUpdateRequest
-	if err := parseRequest(r, w, &req); err != nil {
+	if _, err := parseJSONRequest(core.PerfStandby(), r, w, &req); err != nil {
 		respondError(w, http.StatusBadRequest, err)
 		return
 	}

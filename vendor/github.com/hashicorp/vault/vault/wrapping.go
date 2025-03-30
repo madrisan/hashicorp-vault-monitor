@@ -1,23 +1,27 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package vault
 
 import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/SermoDigital/jose/crypto"
-	"github.com/SermoDigital/jose/jws"
-	"github.com/SermoDigital/jose/jwt"
-	"github.com/hashicorp/errwrap"
-	"github.com/hashicorp/vault/helper/consts"
-	"github.com/hashicorp/vault/helper/jsonutil"
+	"github.com/armon/go-metrics"
+	"github.com/go-jose/go-jose/v3"
+	"github.com/go-jose/go-jose/v3/jwt"
+	"github.com/hashicorp/vault/api"
+	"github.com/hashicorp/vault/helper/metricsutil"
 	"github.com/hashicorp/vault/helper/namespace"
-	"github.com/hashicorp/vault/logical"
+	"github.com/hashicorp/vault/sdk/helper/certutil"
+	"github.com/hashicorp/vault/sdk/helper/consts"
+	"github.com/hashicorp/vault/sdk/helper/jsonutil"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 const (
@@ -31,12 +35,12 @@ func (c *Core) ensureWrappingKey(ctx context.Context) error {
 		return err
 	}
 
-	var keyParams clusterKeyParams
+	var keyParams certutil.ClusterKeyParams
 
 	if entry == nil {
-		key, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+		key, err := ecdsa.GenerateKey(elliptic.P521(), c.secureRandomReader)
 		if err != nil {
-			return errwrap.Wrapf("failed to generate wrapping key: {{err}}", err)
+			return fmt.Errorf("failed to generate wrapping key: %w", err)
 		}
 		keyParams.D = key.D
 		keyParams.X = key.X
@@ -44,20 +48,20 @@ func (c *Core) ensureWrappingKey(ctx context.Context) error {
 		keyParams.Type = corePrivateKeyTypeP521
 		val, err := jsonutil.EncodeJSON(keyParams)
 		if err != nil {
-			return errwrap.Wrapf("failed to encode wrapping key: {{err}}", err)
+			return fmt.Errorf("failed to encode wrapping key: %w", err)
 		}
-		entry = &Entry{
+		entry = &logical.StorageEntry{
 			Key:   coreWrappingJWTKeyPath,
 			Value: val,
 		}
 		if err = c.barrier.Put(ctx, entry); err != nil {
-			return errwrap.Wrapf("failed to store wrapping key: {{err}}", err)
+			return fmt.Errorf("failed to store wrapping key: %w", err)
 		}
 	}
 
 	// Redundant if we just created it, but in this case serves as a check anyways
 	if err = jsonutil.DecodeJSON(entry.Value, &keyParams); err != nil {
-		return errwrap.Wrapf("failed to decode wrapping key parameters: {{err}}", err)
+		return fmt.Errorf("failed to decode wrapping key parameters: %w", err)
 	}
 
 	c.wrappingJWTKey = &ecdsa.PrivateKey{
@@ -74,6 +78,9 @@ func (c *Core) ensureWrappingKey(ctx context.Context) error {
 	return nil
 }
 
+// wrapInCubbyhole is invoked when a caller asks for response wrapping.
+// On success, return (nil, nil) and mutates resp.  On failure, returns
+// either a response describing the failure or an error.
 func (c *Core) wrapInCubbyhole(ctx context.Context, req *logical.Request, resp *logical.Response, auth *logical.Auth) (*logical.Response, error) {
 	if c.perfStandby {
 		return forwardWrapRequest(ctx, c, req, resp, auth)
@@ -138,12 +145,31 @@ DONELISTHANDLING:
 		NamespaceID:    ns.ID,
 	}
 
-	if err := c.tokenStore.create(ctx, &te); err != nil {
+	if err := c.CreateToken(ctx, &te); err != nil {
 		c.logger.Error("failed to create wrapping token", "error", err)
 		return nil, ErrInternalError
 	}
 
-	resp.WrapInfo.Token = te.ID
+	// Count the successful token creation
+	ttl_label := metricsutil.TTLBucket(resp.WrapInfo.TTL)
+	mountPointWithoutNs := ns.TrimmedPath(req.MountPoint)
+	c.metricSink.IncrCounterWithLabels(
+		[]string{"token", "creation"},
+		1,
+		[]metrics.Label{
+			metricsutil.NamespaceLabel(ns),
+			// The type of the secret engine is not all that useful;
+			// we could use "token" but let's be more descriptive,
+			// even if it's not a real auth method.
+			{"auth_method", "response_wrapping"},
+			{"mount_point", mountPointWithoutNs},
+			{"creation_ttl", ttl_label},
+			// *Should* be service, but let's use whatever create() did..
+			{"token_type", te.Type.String()},
+		},
+	)
+
+	resp.WrapInfo.Token = te.ExternalID
 	resp.WrapInfo.Accessor = te.Accessor
 	resp.WrapInfo.CreationTime = creationTime
 	// If this is not a rewrap, store the request path as creation_path
@@ -161,29 +187,52 @@ DONELISTHANDLING:
 		resp.WrapInfo.WrappedAccessor = resp.Auth.Accessor
 	}
 
+	// Store the accessor of the approle secret in WrappedAccessor
+	if secretIdAccessor, ok := resp.Data["secret_id_accessor"]; ok && resp.Auth == nil && req.MountType == "approle" {
+		resp.WrapInfo.WrappedAccessor = secretIdAccessor.(string)
+	}
+
 	switch resp.WrapInfo.Format {
 	case "jwt":
 		// Create the JWT
-		claims := jws.Claims{}
-		// Map the JWT ID to the token ID for ease of use
-		claims.SetJWTID(te.ID)
-		// Set the issue time to the creation time
-		claims.SetIssuedAt(creationTime)
-		// Set the expiration to the TTL
-		claims.SetExpiration(creationTime.Add(resp.WrapInfo.TTL))
-		if resp.Auth != nil {
-			claims.Set("accessor", resp.Auth.Accessor)
+		claims := jwt.Claims{
+			// Map the JWT ID to the token ID for ease of use
+			ID: te.ID,
+			// Set the issue time to the creation time
+			IssuedAt: jwt.NewNumericDate(creationTime),
+			// Set the expiration to the TTL
+			Expiry: jwt.NewNumericDate(creationTime.Add(resp.WrapInfo.TTL)),
+			// Set a reasonable not-before time; since unwrapping happens on this
+			// node we shouldn't have to worry much about drift
+			NotBefore: jwt.NewNumericDate(time.Now().Add(-5 * time.Second)),
 		}
-		claims.Set("type", "wrapping")
-		claims.Set("addr", c.redirectAddr)
-		jwt := jws.NewJWT(claims, crypto.SigningMethodES512)
-		serWebToken, err := jwt.Serialize(c.wrappingJWTKey)
+		type privateClaims struct {
+			Accessor string `json:"accessor"`
+			Type     string `json:"type"`
+			Addr     string `json:"addr"`
+		}
+		priClaims := &privateClaims{
+			Type: "wrapping",
+			Addr: c.redirectAddr,
+		}
+		if resp.Auth != nil {
+			priClaims.Accessor = resp.Auth.Accessor
+		}
+		sig, err := jose.NewSigner(
+			jose.SigningKey{Algorithm: jose.SignatureAlgorithm(api.CubbyHoleJWTSignatureAlgorithm), Key: c.wrappingJWTKey},
+			(&jose.SignerOptions{}).WithType("JWT"))
+		if err != nil {
+			c.tokenStore.revokeOrphan(ctx, te.ID)
+			c.logger.Error("failed to create JWT builder", "error", err)
+			return nil, ErrInternalError
+		}
+		ser, err := jwt.Signed(sig).Claims(claims).Claims(priClaims).CompactSerialize()
 		if err != nil {
 			c.tokenStore.revokeOrphan(ctx, te.ID)
 			c.logger.Error("failed to serialize JWT", "error", err)
 			return nil, ErrInternalError
 		}
-		resp.WrapInfo.Token = string(serWebToken)
+		resp.WrapInfo.Token = ser
 		if c.redirectAddr == "" {
 			resp.AddWarning("No redirect address set in Vault so none could be encoded in the token. You may need to supply Vault's API address when unwrapping the token.")
 		}
@@ -279,8 +328,9 @@ DONELISTHANDLING:
 		},
 	}
 
-	// Register the wrapped token with the expiration manager
-	if err := c.expiration.RegisterAuth(ctx, &te, wAuth); err != nil {
+	// Register the wrapped token with the expiration manager. We skip the role
+	// lookup here as we are not logging in, and only logins apply to role based quotas.
+	if err := c.expiration.RegisterAuth(ctx, &te, wAuth, ""); err != nil {
 		// Revoke since it's not yet being tracked for expiration
 		c.tokenStore.revokeOrphan(ctx, te.ID)
 		c.logger.Error("failed to register cubbyhole wrapping token lease", "request_path", req.Path, "error", err)
@@ -290,16 +340,54 @@ DONELISTHANDLING:
 	return nil, nil
 }
 
-// ValidateWrappingToken checks whether a token is a wrapping token.
-func (c *Core) ValidateWrappingToken(ctx context.Context, req *logical.Request) (bool, error) {
+// validateWrappingToken checks whether a token is a wrapping token. The passed
+// in logical request will be updated if the wrapping token was provided within
+// a JWT token.
+func (c *Core) validateWrappingToken(ctx context.Context, req *logical.Request) (valid bool, err error) {
 	if req == nil {
 		return false, fmt.Errorf("invalid request")
 	}
 
-	var err error
+	if c.Sealed() {
+		return false, consts.ErrSealed
+	}
+
+	if c.standby && !c.perfStandby {
+		return false, consts.ErrStandby
+	}
+
+	defer func() {
+		// Perform audit logging before returning if there's an issue with checking
+		// the wrapping token
+		if err != nil || !valid {
+			// We log the Auth object like so here since the wrapping token can
+			// come from the header, which gets set as the ClientToken
+			auth := &logical.Auth{
+				ClientToken: req.ClientToken,
+				Accessor:    req.ClientTokenAccessor,
+			}
+
+			logInput := &logical.LogInput{
+				Auth:    auth,
+				Request: req,
+			}
+			if err != nil {
+				logInput.OuterErr = errors.New("error validating wrapping token")
+			}
+			if !valid {
+				logInput.OuterErr = consts.ErrInvalidWrappingToken
+			}
+			if err := c.auditBroker.LogRequest(ctx, logInput); err != nil {
+				c.logger.Error("failed to audit request", "path", req.Path, "error", err)
+			}
+		}
+	}()
 
 	var token string
 	var thirdParty bool
+
+	// Check if the wrapping token is coming from the request body, and if not
+	// assume that req.ClientToken is the wrapping token
 	if req.Data != nil && req.Data["token"] != nil {
 		thirdParty = true
 		if tokenStr, ok := req.Data["token"].(string); !ok {
@@ -314,40 +402,44 @@ func (c *Core) ValidateWrappingToken(ctx context.Context, req *logical.Request) 
 	}
 
 	// Check for it being a JWT. If it is, and it is valid, we extract the
-	// internal client token from it and use that during lookup.
-	if strings.Count(token, ".") == 2 {
-		wt, err := jws.ParseJWT([]byte(token))
-		// If there's an error we simply fall back to attempting to use it as a regular token
-		if err == nil && wt != nil {
-			validator := &jwt.Validator{}
-			validator.SetClaim("type", "wrapping")
-			if err = wt.Validate(&c.wrappingJWTKey.PublicKey, crypto.SigningMethodES512, []*jwt.Validator{validator}...); err != nil {
-				return false, errwrap.Wrapf("wrapping token signature could not be validated: {{err}}", err)
-			}
-			token, _ = wt.Claims().JWTID()
-			// We override the given request client token so that the rest of
-			// Vault sees the real value. This also ensures audit logs are
-			// consistent with the actual token that was issued.
-			if !thirdParty {
-				req.ClientToken = token
-			} else {
-				req.Data["token"] = token
-			}
+	// internal client token from it and use that during lookup. The second
+	// check is a quick check to verify that we don't consider a namespaced
+	// token to be a JWT -- namespaced tokens have two dots too, but Vault
+	// token types (for now at least) begin with a letter representing a type
+	// and then a dot.
+	if IsJWT(token) {
+		// Implement the jose library way
+		parsedJWT, err := jwt.ParseSigned(token)
+		if err != nil {
+			return false, fmt.Errorf("wrapping token could not be parsed: %w", err)
 		}
+		var claims jwt.Claims
+		allClaims := make(map[string]interface{})
+		if err = parsedJWT.Claims(&c.wrappingJWTKey.PublicKey, &claims, &allClaims); err != nil {
+			return false, fmt.Errorf("wrapping token signature could not be validated: %w", err)
+		}
+		typeClaimRaw, ok := allClaims["type"]
+		if !ok {
+			return false, errors.New("could not validate type claim")
+		}
+		typeClaim, ok := typeClaimRaw.(string)
+		if !ok {
+			return false, errors.New("could not parse type claim")
+		}
+		if typeClaim != "wrapping" {
+			return false, errors.New("unexpected type claim")
+		}
+		if !thirdParty {
+			req.ClientToken = claims.ID
+		} else {
+			req.Data["token"] = claims.ID
+		}
+
+		token = claims.ID
 	}
 
 	if token == "" {
 		return false, fmt.Errorf("token is empty")
-	}
-
-	if c.Sealed() {
-		return false, consts.ErrSealed
-	}
-
-	c.stateLock.RLock()
-	defer c.stateLock.RUnlock()
-	if c.standby && !c.perfStandby {
-		return false, consts.ErrStandby
 	}
 
 	te, err := c.tokenStore.Lookup(ctx, token)
@@ -358,11 +450,7 @@ func (c *Core) ValidateWrappingToken(ctx context.Context, req *logical.Request) 
 		return false, nil
 	}
 
-	if len(te.Policies) != 1 {
-		return false, nil
-	}
-
-	if te.Policies[0] != responseWrappingPolicyName && te.Policies[0] != controlGroupPolicyName {
+	if !IsWrappingToken(te) {
 		return false, nil
 	}
 
@@ -373,4 +461,16 @@ func (c *Core) ValidateWrappingToken(ctx context.Context, req *logical.Request) 
 	}
 
 	return true, nil
+}
+
+func IsWrappingToken(te *logical.TokenEntry) bool {
+	if len(te.Policies) != 1 {
+		return false
+	}
+
+	if te.Policies[0] != responseWrappingPolicyName && te.Policies[0] != controlGroupPolicyName {
+		return false
+	}
+
+	return true
 }

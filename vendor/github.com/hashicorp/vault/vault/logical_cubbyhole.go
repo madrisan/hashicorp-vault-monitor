@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package vault
 
 import (
@@ -6,17 +9,19 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/errwrap"
-	"github.com/hashicorp/vault/helper/jsonutil"
-	"github.com/hashicorp/vault/logical"
-	"github.com/hashicorp/vault/logical/framework"
+	"github.com/hashicorp/vault/helper/versions"
+	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/helper/consts"
+	"github.com/hashicorp/vault/sdk/helper/jsonutil"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 // CubbyholeBackendFactory constructs a new cubbyhole backend
 func CubbyholeBackendFactory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
 	b := &CubbyholeBackend{}
 	b.Backend = &framework.Backend{
-		Help: strings.TrimSpace(cubbyholeHelp),
+		Help:           strings.TrimSpace(cubbyholeHelp),
+		RunningVersion: versions.GetBuiltinVersion(consts.PluginTypeSecrets, "cubbyhole"),
 	}
 
 	b.Backend.Paths = append(b.Backend.Paths, b.paths()...)
@@ -43,14 +48,57 @@ type CubbyholeBackend struct {
 func (b *CubbyholeBackend) paths() []*framework.Path {
 	return []*framework.Path{
 		{
-			Pattern: ".*",
+			Pattern: framework.MatchAllRegex("path"),
 
-			Callbacks: map[logical.Operation]framework.OperationFunc{
-				logical.ReadOperation:   b.handleRead,
-				logical.CreateOperation: b.handleWrite,
-				logical.UpdateOperation: b.handleWrite,
-				logical.DeleteOperation: b.handleDelete,
-				logical.ListOperation:   b.handleList,
+			DisplayAttrs: &framework.DisplayAttributes{
+				OperationPrefix: "cubbyhole",
+			},
+
+			Fields: map[string]*framework.FieldSchema{
+				"path": {
+					Type:        framework.TypeString,
+					Description: "Specifies the path of the secret.",
+				},
+			},
+
+			TakesArbitraryInput: true,
+
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.ReadOperation: &framework.PathOperation{
+					Callback: b.handleRead,
+					DisplayAttrs: &framework.DisplayAttributes{
+						OperationVerb: "read",
+					},
+					Summary: "Retrieve the secret at the specified location.",
+				},
+				logical.UpdateOperation: &framework.PathOperation{
+					Callback: b.handleWrite,
+					DisplayAttrs: &framework.DisplayAttributes{
+						OperationVerb: "write",
+					},
+					Summary: "Store a secret at the specified location.",
+				},
+				logical.CreateOperation: &framework.PathOperation{
+					Callback: b.handleWrite,
+					DisplayAttrs: &framework.DisplayAttributes{
+						OperationVerb: "write",
+					},
+				},
+				logical.DeleteOperation: &framework.PathOperation{
+					Callback: b.handleDelete,
+					DisplayAttrs: &framework.DisplayAttributes{
+						OperationVerb: "delete",
+					},
+					Summary: "Deletes the secret at the specified location.",
+				},
+				logical.ListOperation: &framework.PathOperation{
+					Callback: b.handleList,
+					DisplayAttrs: &framework.DisplayAttributes{
+						OperationVerb: "list",
+					},
+					Summary:     "List secret entries at the specified location.",
+					Description: "Folders are suffixed with /. The input must be a folder; list on a file will not return a value. The values themselves are not accessible via this command.",
+				},
 			},
 
 			ExistenceCheck: b.handleExistenceCheck,
@@ -61,12 +109,12 @@ func (b *CubbyholeBackend) paths() []*framework.Path {
 	}
 }
 
-func (b *CubbyholeBackend) revoke(ctx context.Context, saltedToken string) error {
+func (b *CubbyholeBackend) revoke(ctx context.Context, view *BarrierView, saltedToken string) error {
 	if saltedToken == "" {
 		return fmt.Errorf("client token empty during revocation")
 	}
 
-	if err := logical.ClearView(ctx, b.storageView.(*BarrierView).SubView(saltedToken+"/")); err != nil {
+	if err := logical.ClearView(ctx, view.SubView(saltedToken+"/")); err != nil {
 		return err
 	}
 
@@ -76,7 +124,7 @@ func (b *CubbyholeBackend) revoke(ctx context.Context, saltedToken string) error
 func (b *CubbyholeBackend) handleExistenceCheck(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
 	out, err := req.Storage.Get(ctx, req.ClientToken+"/"+req.Path)
 	if err != nil {
-		return false, errwrap.Wrapf("existence check failed: {{err}}", err)
+		return false, fmt.Errorf("existence check failed: %w", err)
 	}
 
 	return out != nil, nil
@@ -87,10 +135,16 @@ func (b *CubbyholeBackend) handleRead(ctx context.Context, req *logical.Request,
 		return nil, fmt.Errorf("client token empty")
 	}
 
+	path := data.Get("path").(string)
+
+	if path == "" {
+		return nil, fmt.Errorf("missing path")
+	}
+
 	// Read the path
-	out, err := req.Storage.Get(ctx, req.ClientToken+"/"+req.Path)
+	out, err := req.Storage.Get(ctx, req.ClientToken+"/"+path)
 	if err != nil {
-		return nil, errwrap.Wrapf("read failed: {{err}}", err)
+		return nil, fmt.Errorf("read failed: %w", err)
 	}
 
 	// Fast-path the no data case
@@ -101,7 +155,7 @@ func (b *CubbyholeBackend) handleRead(ctx context.Context, req *logical.Request,
 	// Decode the data
 	var rawData map[string]interface{}
 	if err := jsonutil.DecodeJSON(out.Value, &rawData); err != nil {
-		return nil, errwrap.Wrapf("json decoding failed: {{err}}", err)
+		return nil, fmt.Errorf("json decoding failed: %w", err)
 	}
 
 	// Generate the response
@@ -121,22 +175,28 @@ func (b *CubbyholeBackend) handleWrite(ctx context.Context, req *logical.Request
 		return nil, fmt.Errorf("missing data fields")
 	}
 
+	path := data.Get("path").(string)
+
+	if path == "" {
+		return nil, fmt.Errorf("missing path")
+	}
+
 	// JSON encode the data
 	buf, err := json.Marshal(req.Data)
 	if err != nil {
-		return nil, errwrap.Wrapf("json encoding failed: {{err}}", err)
+		return nil, fmt.Errorf("json encoding failed: %w", err)
 	}
 
 	// Write out a new key
 	entry := &logical.StorageEntry{
-		Key:   req.ClientToken + "/" + req.Path,
+		Key:   req.ClientToken + "/" + path,
 		Value: buf,
 	}
 	if req.WrapInfo != nil && req.WrapInfo.SealWrap {
 		entry.SealWrap = true
 	}
 	if err := req.Storage.Put(ctx, entry); err != nil {
-		return nil, errwrap.Wrapf("failed to write: {{err}}", err)
+		return nil, fmt.Errorf("failed to write: %w", err)
 	}
 
 	return nil, nil
@@ -146,8 +206,11 @@ func (b *CubbyholeBackend) handleDelete(ctx context.Context, req *logical.Reques
 	if req.ClientToken == "" {
 		return nil, fmt.Errorf("client token empty")
 	}
+
+	path := data.Get("path").(string)
+
 	// Delete the key at the request path
-	if err := req.Storage.Delete(ctx, req.ClientToken+"/"+req.Path); err != nil {
+	if err := req.Storage.Delete(ctx, req.ClientToken+"/"+path); err != nil {
 		return nil, err
 	}
 
@@ -162,7 +225,7 @@ func (b *CubbyholeBackend) handleList(ctx context.Context, req *logical.Request,
 	// Right now we only handle directories, so ensure it ends with / We also
 	// check if it's empty so we don't end up doing a listing on '<client
 	// token>//'
-	path := req.Path
+	path := data.Get("path").(string)
 	if path != "" && !strings.HasSuffix(path, "/") {
 		path = path + "/"
 	}

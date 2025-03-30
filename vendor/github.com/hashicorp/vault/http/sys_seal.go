@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package http
 
 import (
@@ -5,19 +8,17 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/hashicorp/errwrap"
-	"github.com/hashicorp/vault/helper/consts"
-	"github.com/hashicorp/vault/logical"
+	"github.com/hashicorp/vault/sdk/helper/consts"
+	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/hashicorp/vault/vault"
-	"github.com/hashicorp/vault/version"
 )
 
 func handleSysSeal(core *vault.Core) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req, statusCode, err := buildLogicalRequest(core, w, r)
+		req, _, statusCode, err := buildLogicalRequest(core, w, r, "")
 		if err != nil || statusCode != 0 {
 			respondError(w, statusCode, err)
 			return
@@ -47,7 +48,7 @@ func handleSysSeal(core *vault.Core) http.Handler {
 
 func handleSysStepDown(core *vault.Core) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req, statusCode, err := buildLogicalRequest(core, w, r)
+		req, _, statusCode, err := buildLogicalRequest(core, w, r, "")
 		if err != nil || statusCode != 0 {
 			respondError(w, statusCode, err)
 			return
@@ -84,16 +85,18 @@ func handleSysUnseal(core *vault.Core) http.Handler {
 			return
 		}
 
-		// Parse the request
-		var req UnsealRequest
-		if err := parseRequest(r, w, &req); err != nil {
-			respondError(w, http.StatusBadRequest, err)
+		// Check if this node was removed from the cluster. If so, respond with an error and return,
+		// since we don't want a removed node to be able to unseal.
+		removed, ok := core.IsRemovedFromCluster()
+		if ok && removed {
+			respondError(w, http.StatusInternalServerError, errors.New("node was removed from a HA cluster"))
 			return
 		}
-		if !req.Reset && req.Key == "" {
-			respondError(
-				w, http.StatusBadRequest,
-				errors.New("'key' must be specified in request body as JSON, or 'reset' set to true"))
+
+		// Parse the request
+		var req UnsealRequest
+		if _, err := parseJSONRequest(core.PerfStandby(), r, w, &req); err != nil {
+			respondError(w, http.StatusBadRequest, err)
 			return
 		}
 
@@ -103,44 +106,53 @@ func handleSysUnseal(core *vault.Core) http.Handler {
 				return
 			}
 			core.ResetUnsealProcess()
-		} else {
-			// Decode the key, which is base64 or hex encoded
-			min, max := core.BarrierKeyLength()
-			key, err := hex.DecodeString(req.Key)
-			// We check min and max here to ensure that a string that is base64
-			// encoded but also valid hex will not be valid and we instead base64
-			// decode it
-			if err != nil || len(key) < min || len(key) > max {
-				key, err = base64.StdEncoding.DecodeString(req.Key)
-				if err != nil {
-					respondError(
-						w, http.StatusBadRequest,
-						errors.New("'key' must be a valid hex or base64 string"))
-					return
-				}
-			}
+			handleSysSealStatusRaw(core, w, r)
+			return
+		}
 
-			// Attempt the unseal
-			ctx := context.Background()
-			if core.SealAccess().RecoveryKeySupported() {
-				_, err = core.UnsealWithRecoveryKeys(ctx, key)
-			} else {
-				_, err = core.Unseal(key)
-			}
+		if req.Key == "" {
+			respondError(
+				w, http.StatusBadRequest,
+				errors.New("'key' must be specified in request body as JSON, or 'reset' set to true"))
+			return
+		}
+
+		// Decode the key, which is base64 or hex encoded
+		min, max := core.BarrierKeyLength()
+		key, err := hex.DecodeString(req.Key)
+		// We check min and max here to ensure that a string that is base64
+		// encoded but also valid hex will not be valid and we instead base64
+		// decode it
+		if err != nil || len(key) < min || len(key) > max {
+			key, err = base64.StdEncoding.DecodeString(req.Key)
 			if err != nil {
-				switch {
-				case errwrap.ContainsType(err, new(vault.ErrInvalidKey)):
-				case errwrap.Contains(err, vault.ErrBarrierInvalidKey.Error()):
-				case errwrap.Contains(err, vault.ErrBarrierNotInit.Error()):
-				case errwrap.Contains(err, vault.ErrBarrierSealed.Error()):
-				case errwrap.Contains(err, consts.ErrStandby.Error()):
-				default:
-					respondError(w, http.StatusInternalServerError, err)
-					return
-				}
-				respondError(w, http.StatusBadRequest, err)
+				respondError(
+					w, http.StatusBadRequest,
+					errors.New("'key' must be a valid hex or base64 string"))
 				return
 			}
+		}
+
+		// Attempt the unseal.  If migrate was specified, the key should correspond
+		// to the old seal.
+		if req.Migrate {
+			_, err = core.UnsealMigrate(key)
+		} else {
+			_, err = core.Unseal(key)
+		}
+		if err != nil {
+			switch {
+			case errwrap.ContainsType(err, new(vault.ErrInvalidKey)):
+			case errwrap.Contains(err, vault.ErrBarrierInvalidKey.Error()):
+			case errwrap.Contains(err, vault.ErrBarrierNotInit.Error()):
+			case errwrap.Contains(err, vault.ErrBarrierSealed.Error()):
+			case errwrap.Contains(err, consts.ErrStandby.Error()):
+			default:
+				respondError(w, http.StatusInternalServerError, err)
+				return
+			}
+			respondError(w, http.StatusBadRequest, err)
+			return
 		}
 
 		// Return the seal status
@@ -148,85 +160,70 @@ func handleSysUnseal(core *vault.Core) http.Handler {
 	})
 }
 
-func handleSysSealStatus(core *vault.Core) http.Handler {
+func handleSysSealStatus(core *vault.Core, opt ...ListenerConfigOption) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			respondError(w, http.StatusMethodNotAllowed, nil)
 			return
 		}
 
-		handleSysSealStatusRaw(core, w, r)
+		handleSysSealStatusRaw(core, w, r, opt...)
 	})
 }
 
-func handleSysSealStatusRaw(core *vault.Core, w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
+func handleSysSealBackendStatus(core *vault.Core) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			respondError(w, http.StatusMethodNotAllowed, nil)
+			return
+		}
 
-	sealed := core.Sealed()
+		handleSysSealBackendStatusRaw(core, w, r)
+	})
+}
 
-	var sealConfig *vault.SealConfig
-	var err error
-	if core.SealAccess().RecoveryKeySupported() {
-		sealConfig, err = core.SealAccess().RecoveryConfig(ctx)
-	} else {
-		sealConfig, err = core.SealAccess().BarrierConfig(ctx)
+func handleSysSealStatusRaw(core *vault.Core, w http.ResponseWriter, r *http.Request, opt ...ListenerConfigOption) {
+	ctx := r.Context()
+
+	var tokenPresent bool
+	token := r.Header.Get(consts.AuthHeaderName)
+	if token != "" {
+		// We don't care about the error, we just want to know if the token exists
+		lock := core.HALock()
+		lock.Lock()
+		tokenEntry, err := core.LookupToken(ctx, token)
+		lock.Unlock()
+		tokenPresent = err == nil && tokenEntry != nil
 	}
+
+	// If there are is no valid token then we will redact the specified values
+	if tokenPresent {
+		ctx = logical.CreateContextRedactionSettings(ctx, false, false, false)
+	}
+
+	status, err := core.GetSealStatus(ctx, true)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, err)
 		return
 	}
+	respondOk(w, status)
+}
 
-	if sealConfig == nil {
-		respondError(w, http.StatusBadRequest, fmt.Errorf("server is not yet initialized"))
+func handleSysSealBackendStatusRaw(core *vault.Core, w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+	status, err := core.GetSealBackendStatus(ctx)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err)
 		return
 	}
-
-	// Fetch the local cluster name and identifier
-	var clusterName, clusterID string
-	if !sealed {
-		cluster, err := core.Cluster(ctx)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if cluster == nil {
-			respondError(w, http.StatusInternalServerError, fmt.Errorf("failed to fetch cluster details"))
-			return
-		}
-		clusterName = cluster.Name
-		clusterID = cluster.ID
-	}
-
-	progress, nonce := core.SecretProgress()
-
-	respondOk(w, &SealStatusResponse{
-		Type:         sealConfig.Type,
-		Sealed:       sealed,
-		T:            sealConfig.SecretThreshold,
-		N:            sealConfig.SecretShares,
-		Progress:     progress,
-		Nonce:        nonce,
-		Version:      version.GetVersion().VersionNumber(),
-		ClusterName:  clusterName,
-		ClusterID:    clusterID,
-		RecoverySeal: core.SealAccess().RecoveryKeySupported(),
-	})
+	respondOk(w, status)
 }
 
-type SealStatusResponse struct {
-	Type         string `json:"type"`
-	Sealed       bool   `json:"sealed"`
-	T            int    `json:"t"`
-	N            int    `json:"n"`
-	Progress     int    `json:"progress"`
-	Nonce        string `json:"nonce"`
-	Version      string `json:"version"`
-	ClusterName  string `json:"cluster_name,omitempty"`
-	ClusterID    string `json:"cluster_id,omitempty"`
-	RecoverySeal bool   `json:"recovery_seal"`
-}
-
+// Note: because we didn't provide explicit tagging in the past we can't do it
+// now because if it then no longer accepts capitalized versions it could break
+// clients
 type UnsealRequest struct {
-	Key   string
-	Reset bool
+	Key     string
+	Reset   bool
+	Migrate bool
 }

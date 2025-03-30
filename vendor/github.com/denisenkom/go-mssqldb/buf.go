@@ -48,8 +48,8 @@ type tdsBuffer struct {
 func newTdsBuffer(bufsize uint16, transport io.ReadWriteCloser) *tdsBuffer {
 	return &tdsBuffer{
 		packetSize: int(bufsize),
-		wbuf:       make([]byte, 1<<16),
-		rbuf:       make([]byte, 1<<16),
+		wbuf:       make([]byte, bufsize),
+		rbuf:       make([]byte, bufsize),
 		rpos:       8,
 		transport:  transport,
 	}
@@ -137,19 +137,28 @@ func (w *tdsBuffer) FinishPacket() error {
 var headerSize = binary.Size(header{})
 
 func (r *tdsBuffer) readNextPacket() error {
-	h := header{}
-	var err error
-	err = binary.Read(r.transport, binary.BigEndian, &h)
+	buf := r.rbuf[:headerSize]
+	_, err := io.ReadFull(r.transport, buf)
 	if err != nil {
 		return err
 	}
+	h := header{
+		PacketType: packetType(buf[0]),
+		Status:     buf[1],
+		Size:       binary.BigEndian.Uint16(buf[2:4]),
+		Spid:       binary.BigEndian.Uint16(buf[4:6]),
+		PacketNo:   buf[6],
+		Pad:        buf[7],
+	}
 	if int(h.Size) > r.packetSize {
-		return errors.New("Invalid packet size, it is longer than buffer size")
+		return errors.New("invalid packet size, it is longer than buffer size")
 	}
 	if headerSize > int(h.Size) {
-		return errors.New("Invalid packet size, it is shorter than header size")
+		return errors.New("invalid packet size, it is shorter than header size")
 	}
 	_, err = io.ReadFull(r.transport, r.rbuf[headerSize:h.Size])
+	//s := base64.StdEncoding.EncodeToString(r.rbuf[headerSize:h.Size])
+	//fmt.Print(s)
 	if err != nil {
 		return err
 	}
@@ -221,23 +230,27 @@ func (r *tdsBuffer) uint16() uint16 {
 }
 
 func (r *tdsBuffer) BVarChar() string {
-	l := int(r.byte())
-	return r.readUcs2(l)
+	return readBVarCharOrPanic(r)
 }
 
-func (r *tdsBuffer) UsVarChar() string {
-	l := int(r.uint16())
-	return r.readUcs2(l)
-}
-
-func (r *tdsBuffer) readUcs2(numchars int) string {
-	b := make([]byte, numchars*2)
-	r.ReadFull(b)
-	res, err := ucs22str(b)
+func readBVarCharOrPanic(r io.Reader) string {
+	s, err := readBVarChar(r)
 	if err != nil {
 		badStreamPanic(err)
 	}
-	return res
+	return s
+}
+
+func readUsVarCharOrPanic(r io.Reader) string {
+	s, err := readUsVarChar(r)
+	if err != nil {
+		badStreamPanic(err)
+	}
+	return s
+}
+
+func (r *tdsBuffer) UsVarChar() string {
+	return readUsVarCharOrPanic(r)
 }
 
 func (r *tdsBuffer) Read(buf []byte) (copied int, err error) {

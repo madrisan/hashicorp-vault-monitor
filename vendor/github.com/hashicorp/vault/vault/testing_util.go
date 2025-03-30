@@ -1,10 +1,20 @@
-// +build !enterprise
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
 
 package vault
 
-import "github.com/mitchellh/go-testing-interface"
+import (
+	"time"
 
-func testGenerateCoreKeys() (interface{}, interface{}, error)                   { return nil, nil, nil }
-func testGetLicensingConfig(interface{}) *LicensingConfig                       { return &LicensingConfig{} }
-func testAdjustTestCore(*CoreConfig, *TestClusterCore)                          {}
-func testExtraClusterCoresTestSetup(testing.T, interface{}, []*TestClusterCore) {}
+	"github.com/hashicorp/vault/version"
+)
+
+func init() {
+	// The BuildDate is set as part of the build process in CI so we need to
+	// initialize it for testing. By setting it to now minus one year we
+	// provide some headroom to ensure that test license expiration (for enterprise)
+	// does not exceed the BuildDate as that is invalid.
+	if version.BuildDate == "" {
+		version.BuildDate = time.Now().UTC().AddDate(-1, 0, 0).Format(time.RFC3339)
+	}
+}

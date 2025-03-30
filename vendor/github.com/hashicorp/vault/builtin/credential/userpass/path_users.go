@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package userpass
 
 import (
@@ -7,15 +10,21 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-sockaddr"
-	"github.com/hashicorp/vault/helper/parseutil"
-	"github.com/hashicorp/vault/helper/policyutil"
-	"github.com/hashicorp/vault/logical"
-	"github.com/hashicorp/vault/logical/framework"
+	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/helper/tokenutil"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 func pathUsersList(b *backend) *framework.Path {
 	return &framework.Path{
 		Pattern: "users/?",
+
+		DisplayAttrs: &framework.DisplayAttributes{
+			OperationPrefix: operationPrefixUserpass,
+			OperationSuffix: "users",
+			Navigation:      true,
+			ItemType:        "User",
+		},
 
 		Callbacks: map[logical.Operation]framework.OperationFunc{
 			logical.ListOperation: b.pathUserList,
@@ -27,38 +36,60 @@ func pathUsersList(b *backend) *framework.Path {
 }
 
 func pathUsers(b *backend) *framework.Path {
-	return &framework.Path{
-		Pattern: "users/" + framework.GenericNameRegex("username"),
+	p := &framework.Path{
+		Pattern: "users/" + framework.GenericNameRegex(paramUsername),
+
+		DisplayAttrs: &framework.DisplayAttributes{
+			OperationPrefix: operationPrefixUserpass,
+			OperationSuffix: "user",
+			Action:          "Create",
+			ItemType:        "User",
+		},
+
 		Fields: map[string]*framework.FieldSchema{
-			"username": &framework.FieldSchema{
+			paramUsername: {
 				Type:        framework.TypeString,
 				Description: "Username for this user.",
 			},
 
-			"password": &framework.FieldSchema{
+			paramPassword: {
 				Type:        framework.TypeString,
 				Description: "Password for this user.",
+				DisplayAttrs: &framework.DisplayAttributes{
+					Sensitive: true,
+				},
 			},
 
-			"policies": &framework.FieldSchema{
+			paramPasswordHash: {
+				Type:        framework.TypeString,
+				Description: "Pre-hashed password in bcrypt format for this user.",
+				DisplayAttrs: &framework.DisplayAttributes{
+					Sensitive: true,
+				},
+			},
+
+			"policies": {
 				Type:        framework.TypeCommaStringSlice,
-				Description: "Comma-separated list of policies",
+				Description: tokenutil.DeprecationText("token_policies"),
+				Deprecated:  true,
 			},
 
-			"ttl": &framework.FieldSchema{
+			"ttl": {
 				Type:        framework.TypeDurationSecond,
-				Description: "Duration after which authentication will be expired",
+				Description: tokenutil.DeprecationText("token_ttl"),
+				Deprecated:  true,
 			},
 
-			"max_ttl": &framework.FieldSchema{
+			"max_ttl": {
 				Type:        framework.TypeDurationSecond,
-				Description: "Maximum duration after which authentication will be expired",
+				Description: tokenutil.DeprecationText("token_max_ttl"),
+				Deprecated:  true,
 			},
 
-			"bound_cidrs": &framework.FieldSchema{
-				Type: framework.TypeCommaStringSlice,
-				Description: `Comma separated string or list of CIDR blocks. If set, specifies the blocks of
-IP addresses which can perform the login operation.`,
+			"bound_cidrs": {
+				Type:        framework.TypeCommaStringSlice,
+				Description: tokenutil.DeprecationText("token_bound_cidrs"),
+				Deprecated:  true,
 			},
 		},
 
@@ -74,10 +105,13 @@ IP addresses which can perform the login operation.`,
 		HelpSynopsis:    pathUserHelpSyn,
 		HelpDescription: pathUserHelpDesc,
 	}
+
+	tokenutil.AddTokenFields(p.Fields)
+	return p
 }
 
-func (b *backend) userExistenceCheck(ctx context.Context, req *logical.Request, data *framework.FieldData) (bool, error) {
-	userEntry, err := b.user(ctx, req.Storage, data.Get("username").(string))
+func (b *backend) userExistenceCheck(ctx context.Context, req *logical.Request, d *framework.FieldData) (bool, error) {
+	userEntry, err := b.user(ctx, req.Storage, d.Get(paramUsername).(string))
 	if err != nil {
 		return false, err
 	}
@@ -103,6 +137,19 @@ func (b *backend) user(ctx context.Context, s logical.Storage, username string) 
 		return nil, err
 	}
 
+	if result.TokenTTL == 0 && result.TTL > 0 {
+		result.TokenTTL = result.TTL
+	}
+	if result.TokenMaxTTL == 0 && result.MaxTTL > 0 {
+		result.TokenMaxTTL = result.MaxTTL
+	}
+	if len(result.TokenPolicies) == 0 && len(result.Policies) > 0 {
+		result.TokenPolicies = result.Policies
+	}
+	if len(result.TokenBoundCIDRs) == 0 && len(result.BoundCIDRs) > 0 {
+		result.TokenBoundCIDRs = result.BoundCIDRs
+	}
+
 	return &result, nil
 }
 
@@ -124,7 +171,7 @@ func (b *backend) pathUserList(ctx context.Context, req *logical.Request, d *fra
 }
 
 func (b *backend) pathUserDelete(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	err := req.Storage.Delete(ctx, "user/"+strings.ToLower(d.Get("username").(string)))
+	err := req.Storage.Delete(ctx, "user/"+strings.ToLower(d.Get(paramUsername).(string)))
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +180,7 @@ func (b *backend) pathUserDelete(ctx context.Context, req *logical.Request, d *f
 }
 
 func (b *backend) pathUserRead(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	user, err := b.user(ctx, req.Storage, strings.ToLower(d.Get("username").(string)))
+	user, err := b.user(ctx, req.Storage, strings.ToLower(d.Get(paramUsername).(string)))
 	if err != nil {
 		return nil, err
 	}
@@ -141,18 +188,30 @@ func (b *backend) pathUserRead(ctx context.Context, req *logical.Request, d *fra
 		return nil, nil
 	}
 
+	data := map[string]interface{}{}
+	user.PopulateTokenData(data)
+
+	// Add backwards compat data
+	if user.TTL > 0 {
+		data["ttl"] = int64(user.TTL.Seconds())
+	}
+	if user.MaxTTL > 0 {
+		data["max_ttl"] = int64(user.MaxTTL.Seconds())
+	}
+	if len(user.Policies) > 0 {
+		data["policies"] = data["token_policies"]
+	}
+	if len(user.BoundCIDRs) > 0 {
+		data["bound_cidrs"] = user.BoundCIDRs
+	}
+
 	return &logical.Response{
-		Data: map[string]interface{}{
-			"policies":    user.Policies,
-			"ttl":         user.TTL.Seconds(),
-			"max_ttl":     user.MaxTTL.Seconds(),
-			"bound_cidrs": user.BoundCIDRs,
-		},
+		Data: data,
 	}, nil
 }
 
 func (b *backend) userCreateUpdate(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	username := strings.ToLower(d.Get("username").(string))
+	username := strings.ToLower(d.Get(paramUsername).(string))
 	userEntry, err := b.user(ctx, req.Storage, username)
 	if err != nil {
 		return nil, err
@@ -162,48 +221,60 @@ func (b *backend) userCreateUpdate(ctx context.Context, req *logical.Request, d 
 		userEntry = &UserEntry{}
 	}
 
-	if _, ok := d.GetOk("password"); ok {
+	if err := userEntry.ParseTokenFields(req, d); err != nil {
+		return logical.ErrorResponse(err.Error()), logical.ErrInvalidRequest
+	}
+
+	if d.Get(paramPassword).(string) != "" || d.Get(paramPasswordHash).(string) != "" {
 		userErr, intErr := b.updateUserPassword(req, d, userEntry)
 		if intErr != nil {
-			return nil, err
+			return nil, intErr
 		}
 		if userErr != nil {
 			return logical.ErrorResponse(userErr.Error()), logical.ErrInvalidRequest
 		}
 	}
 
-	if policiesRaw, ok := d.GetOk("policies"); ok {
-		userEntry.Policies = policyutil.ParsePolicies(policiesRaw)
-	}
+	// handle upgrade cases
+	{
+		if err := tokenutil.UpgradeValue(d, "policies", "token_policies", &userEntry.Policies, &userEntry.TokenPolicies); err != nil {
+			return logical.ErrorResponse(err.Error()), nil
+		}
 
-	ttl, ok := d.GetOk("ttl")
-	if ok {
-		userEntry.TTL = time.Duration(ttl.(int)) * time.Second
-	}
+		if err := tokenutil.UpgradeValue(d, "ttl", "token_ttl", &userEntry.TTL, &userEntry.TokenTTL); err != nil {
+			return logical.ErrorResponse(err.Error()), nil
+		}
 
-	maxTTL, ok := d.GetOk("max_ttl")
-	if ok {
-		userEntry.MaxTTL = time.Duration(maxTTL.(int)) * time.Second
-	}
+		if err := tokenutil.UpgradeValue(d, "max_ttl", "token_max_ttl", &userEntry.MaxTTL, &userEntry.TokenMaxTTL); err != nil {
+			return logical.ErrorResponse(err.Error()), nil
+		}
 
-	boundCIDRs, err := parseutil.ParseAddrs(d.Get("bound_cidrs"))
-	if err != nil {
-		return logical.ErrorResponse(err.Error()), logical.ErrInvalidRequest
+		if err := tokenutil.UpgradeValue(d, "bound_cidrs", "token_bound_cidrs", &userEntry.BoundCIDRs, &userEntry.TokenBoundCIDRs); err != nil {
+			return logical.ErrorResponse(err.Error()), nil
+		}
 	}
-	userEntry.BoundCIDRs = boundCIDRs
 
 	return nil, b.setUser(ctx, req.Storage, username, userEntry)
 }
 
 func (b *backend) pathUserWrite(ctx context.Context, req *logical.Request, d *framework.FieldData) (*logical.Response, error) {
-	password := d.Get("password").(string)
-	if req.Operation == logical.CreateOperation && password == "" {
-		return logical.ErrorResponse("missing password"), logical.ErrInvalidRequest
+	password := d.Get(paramPassword).(string)
+	passwordHash := d.Get(paramPasswordHash).(string)
+
+	switch {
+	case password != "" && passwordHash != "":
+		return logical.ErrorResponse(fmt.Sprintf("%q and %q cannot be supplied together", paramPassword, paramPasswordHash)), logical.ErrInvalidRequest
+	case password == "" && passwordHash == "" && req.Operation == logical.CreateOperation:
+		// Password or pre-hashed password are only required on 'create'.
+		return logical.ErrorResponse(fmt.Sprintf("%q or %q must be supplied", paramPassword, paramPasswordHash)), logical.ErrInvalidRequest
+	default:
+		return b.userCreateUpdate(ctx, req, d)
 	}
-	return b.userCreateUpdate(ctx, req, d)
 }
 
 type UserEntry struct {
+	tokenutil.TokenParams
+
 	// Password is deprecated in Vault 0.2 in favor of
 	// PasswordHash, but is retained for backwards compatibility.
 	Password string

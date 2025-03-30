@@ -1,11 +1,15 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package http
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
-	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/vault/helper/namespace"
-	"github.com/hashicorp/vault/logical"
+	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/hashicorp/vault/vault"
 )
 
@@ -32,21 +36,18 @@ func handleHelp(core *vault.Core, w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, nil)
 		return
 	}
-	path := ns.TrimmedPath(r.URL.Path[len("/v1/"):])
+	if !strings.HasPrefix(r.URL.Path, "/v1/") {
+		respondError(w, http.StatusNotFound, errors.New("Missing /v1/ prefix in path. Use vault path-help command to retrieve API help for paths"))
+		return
+	}
+	path := trimPath(ns, r.URL.Path)
 
-	req, err := requestAuth(core, r, &logical.Request{
+	req := &logical.Request{
 		Operation:  logical.HelpOperation,
 		Path:       path,
 		Connection: getConnection(r),
-	})
-	if err != nil {
-		if errwrap.Contains(err, logical.ErrPermissionDenied.Error()) {
-			respondError(w, http.StatusForbidden, nil)
-			return
-		}
-		respondError(w, http.StatusBadRequest, errwrap.Wrapf("error performing token check: {{err}}", err))
-		return
 	}
+	requestAuth(r, req)
 
 	resp, err := core.HandleRequest(r.Context(), req)
 	if err != nil {

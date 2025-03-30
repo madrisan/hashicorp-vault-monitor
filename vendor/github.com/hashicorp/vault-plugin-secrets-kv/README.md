@@ -62,7 +62,16 @@ $ make
 $ make dev
 ```
 
-Put the plugin binary into a location of your choice. This directory
+Once you've done that, there are two approaches to testing your new plugin version
+in Vault. You can add a temporary `replace` declaration in your local Vault checkout's
+go.mod (above the `require` declarations), such as:
+
+```
+replace github.com/hashicorp/vault-plugin-secrets-kv => /path/to/your/project/vault-plugin-secrets-kv
+```
+
+Alternatively, you could go through the plugin process. To do this,
+put the plugin binary into a location of your choice. This directory
 will be specified as the [`plugin_directory`](https://www.vaultproject.io/docs/configuration/index.html#plugin_directory)
 in the Vault config used to start the server.
 
@@ -78,14 +87,14 @@ $ vault server -config=path/to/config.json ...
 ...
 ```
 
-Once the server is started, register the plugin in the Vault server's [plugin catalog](https://www.vaultproject.io/docs/internals/plugins.html#plugin-catalog):
+Once the server is started, register the plugin in the Vault server's [plugin catalog](https://developer.hashicorp.com/vault/docs/plugins/plugin-architecture#plugin-catalog):
 
 ```sh
-$ vault write sys/plugins/catalog/kv \
-        sha_256=<expected SHA256 Hex value of the plugin binary> \
-        command="vault-plugin-secrets-kv"
-...
-Success! Data written to: sys/plugins/catalog/kv
+$ vault plugin register \
+        -sha256=<expected SHA256 Hex value of the plugin binary> \
+        -command="vault-plugin-secrets-kv" \
+        secret \
+        kv
 ```
 
 Note you should generate a new sha256 checksum if you have made changes

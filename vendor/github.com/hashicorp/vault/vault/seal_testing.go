@@ -1,77 +1,39 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package vault
 
 import (
 	"context"
+	testing "testing"
 
-	"github.com/mitchellh/go-testing-interface"
+	"github.com/hashicorp/vault/vault/seal"
+	vaultseal "github.com/hashicorp/vault/vault/seal"
 )
 
-var (
-	TestCoreUnsealedWithConfigs = testCoreUnsealedWithConfigs
-	TestSealDefConfigs          = testSealDefConfigs
-)
-
-type TestSealOpts struct {
-	StoredKeysDisabled   bool
-	RecoveryKeysDisabled bool
-}
-
-func testCoreUnsealedWithConfigs(t testing.T, barrierConf, recoveryConf *SealConfig) (*Core, [][]byte, [][]byte, string) {
+func TestCoreUnsealedWithConfigs(t testing.TB, barrierConf, recoveryConf *SealConfig) (*Core, [][]byte, [][]byte, string) {
 	t.Helper()
-	var opts *TestSealOpts
+	opts := &seal.TestSealOpts{}
 	if recoveryConf == nil {
-		opts = &TestSealOpts{
-			StoredKeysDisabled:   true,
-			RecoveryKeysDisabled: true,
-		}
+		opts.StoredKeys = seal.StoredKeysSupportedShamirRoot
 	}
-	seal := NewTestSeal(t, opts)
-	core := TestCoreWithSeal(t, seal, false)
-	result, err := core.Initialize(context.Background(), &InitParams{
-		BarrierConfig:  barrierConf,
-		RecoveryConfig: recoveryConf,
-	})
-	if err != nil {
-		t.Fatalf("err: %s", err)
-	}
-	err = core.UnsealWithStoredKeys(context.Background())
-	if err != nil {
-		t.Fatalf("err: %s", err)
-	}
-	if core.Sealed() {
-		for _, key := range result.SecretShares {
-			if _, err := core.Unseal(TestKeyCopy(key)); err != nil {
-				t.Fatalf("unseal err: %s", err)
-			}
-		}
-
-		if core.Sealed() {
-			t.Fatal("should not be sealed")
-		}
-	}
-
-	return core, result.SecretShares, result.RecoveryShares, result.RootToken
+	return TestCoreUnsealedWithConfigSealOpts(t, barrierConf, recoveryConf, opts)
 }
 
-func testSealDefConfigs() (*SealConfig, *SealConfig) {
-	return &SealConfig{
-		SecretShares:    5,
-		SecretThreshold: 3,
-	}, nil
-}
-
-func TestCoreUnsealedWithConfigSealOpts(t testing.T, barrierConf, recoveryConf *SealConfig, sealOpts *TestSealOpts) (*Core, [][]byte, [][]byte, string) {
+func TestCoreUnsealedWithConfigSealOpts(t testing.TB, barrierConf, recoveryConf *SealConfig, sealOpts *seal.TestSealOpts) (*Core, [][]byte, [][]byte, string) {
+	t.Helper()
 	seal := NewTestSeal(t, sealOpts)
 	core := TestCoreWithSeal(t, seal, false)
 	result, err := core.Initialize(context.Background(), &InitParams{
-		BarrierConfig:  barrierConf,
-		RecoveryConfig: recoveryConf,
+		BarrierConfig:    barrierConf,
+		RecoveryConfig:   recoveryConf,
+		LegacyShamirSeal: sealOpts.StoredKeys == vaultseal.StoredKeysNotSupported,
 	})
 	if err != nil {
 		t.Fatalf("err: %s", err)
 	}
 	err = core.UnsealWithStoredKeys(context.Background())
-	if err != nil {
+	if err != nil && IsFatalError(err) {
 		t.Fatalf("err: %s", err)
 	}
 	if core.Sealed() {

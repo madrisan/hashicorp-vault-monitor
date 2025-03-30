@@ -6,6 +6,7 @@ function run_tests() {
 	local clusterSize=3
 	local version=$1
 	local auth=$2
+	local compressor=$3
 
 	if [ "$auth" = true ]; then
 		clusterSize=1
@@ -50,11 +51,11 @@ function run_tests() {
 	elif [[ $version == 2.2.* || $version == 3.0.* ]]; then
 		proto=4
 		ccm updateconf 'enable_user_defined_functions: true'
-		export JVM_EXTRA_OPTS=" -Dcassandra.custom_query_handler_class=org.apache.cassandra.cql3.CustomPayloadMirroringQueryHandler"
+		export JVM_EXTRA_OPTS=" -Dcassandra.test.fail_writes_ks=test -Dcassandra.custom_query_handler_class=org.apache.cassandra.cql3.CustomPayloadMirroringQueryHandler"
 	elif [[ $version == 3.*.* ]]; then
 		proto=5
 		ccm updateconf 'enable_user_defined_functions: true'
-		export JVM_EXTRA_OPTS=" -Dcassandra.custom_query_handler_class=org.apache.cassandra.cql3.CustomPayloadMirroringQueryHandler"
+		export JVM_EXTRA_OPTS=" -Dcassandra.test.fail_writes_ks=test -Dcassandra.custom_query_handler_class=org.apache.cassandra.cql3.CustomPayloadMirroringQueryHandler"
 	fi
 
 	sleep 1s
@@ -64,7 +65,7 @@ function run_tests() {
 	ccm status
 	ccm node1 nodetool status
 
-	local args="-gocql.timeout=60s -runssl -proto=$proto -rf=3 -clusterSize=$clusterSize -autowait=2000ms -compressor=snappy -gocql.cversion=$version -cluster=$(ccm liveset) ./..."
+	local args="-gocql.timeout=60s -runssl -proto=$proto -rf=3 -clusterSize=$clusterSize -autowait=2000ms -compressor=$compressor -gocql.cversion=$version -cluster=$(ccm liveset) ./..."
 
 	go test -v -tags unit -race
 
@@ -74,10 +75,16 @@ function run_tests() {
 		go test -run=TestAuthentication -tags "integration gocql_debug" -timeout=15s -runauth $args
 	else
 		sleep 1s
+		go test -tags "cassandra gocql_debug" -timeout=5m -race $args
+
+		ccm clear
+		ccm start --wait-for-binary-proto
+		sleep 1s
+
 		go test -tags "integration gocql_debug" -timeout=5m -race $args
 
 		ccm clear
-		ccm start
+		ccm start --wait-for-binary-proto
 		sleep 1s
 
 		go test -tags "ccm gocql_debug" -timeout=5m -race $args
@@ -86,4 +93,4 @@ function run_tests() {
 	ccm remove
 }
 
-run_tests $1 $2
+run_tests $1 $2 $3

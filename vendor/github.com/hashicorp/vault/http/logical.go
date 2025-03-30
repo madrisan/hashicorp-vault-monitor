@@ -1,10 +1,15 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package http
 
 import (
+	"bufio"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"strconv"
@@ -14,25 +19,49 @@ import (
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/vault/helper/namespace"
-	"github.com/hashicorp/vault/logical"
+	"github.com/hashicorp/vault/sdk/helper/consts"
+	"github.com/hashicorp/vault/sdk/logical"
 	"github.com/hashicorp/vault/vault"
+	"go.uber.org/atomic"
 )
 
-func buildLogicalRequest(core *vault.Core, w http.ResponseWriter, r *http.Request) (*logical.Request, int, error) {
+// bufferedReader can be used to replace a request body with a buffered
+// version. The Close method invokes the original Closer.
+type bufferedReader struct {
+	*bufio.Reader
+	rOrig io.ReadCloser
+}
+
+func newBufferedReader(r io.ReadCloser) *bufferedReader {
+	return &bufferedReader{
+		Reader: bufio.NewReader(r),
+		rOrig:  r,
+	}
+}
+
+func (b *bufferedReader) Close() error {
+	return b.rOrig.Close()
+}
+
+const MergePatchContentTypeHeader = "application/merge-patch+json"
+
+func buildLogicalRequestNoAuth(perfStandby bool, ra *vault.RouterAccess, w http.ResponseWriter, r *http.Request) (*logical.Request, io.ReadCloser, int, error) {
 	ns, err := namespace.FromContext(r.Context())
 	if err != nil {
-		return nil, http.StatusBadRequest, nil
+		return nil, nil, http.StatusBadRequest, nil
 	}
-	path := ns.TrimmedPath(r.URL.Path[len("/v1/"):])
-
+	path := trimPath(ns, r.URL.Path)
 	var data map[string]interface{}
+	var origBody io.ReadCloser
+	var passHTTPReq bool
+	var responseWriter http.ResponseWriter
 
 	// Determine the operation
 	var op logical.Operation
 	switch r.Method {
 	case "DELETE":
 		op = logical.DeleteOperation
-
+		data = parseQuery(r.URL.Query())
 	case "GET":
 		op = logical.ReadOperation
 		queryVals := r.URL.Query()
@@ -42,9 +71,10 @@ func buildLogicalRequest(core *vault.Core, w http.ResponseWriter, r *http.Reques
 		if listStr != "" {
 			list, err = strconv.ParseBool(listStr)
 			if err != nil {
-				return nil, http.StatusBadRequest, nil
+				return nil, nil, http.StatusBadRequest, nil
 			}
 			if list {
+				queryVals.Del("list")
 				op = logical.ListOperation
 				if !strings.HasSuffix(path, "/") {
 					path += "/"
@@ -52,41 +82,99 @@ func buildLogicalRequest(core *vault.Core, w http.ResponseWriter, r *http.Reques
 			}
 		}
 
-		if !list {
-			getData := map[string]interface{}{}
+		data = parseQuery(queryVals)
 
-			for k, v := range r.URL.Query() {
-				// Skip the help key as this is a reserved parameter
-				if k == "help" {
-					continue
-				}
-
-				switch {
-				case len(v) == 0:
-				case len(v) == 1:
-					getData[k] = v[0]
-				default:
-					getData[k] = v
-				}
-			}
-
-			if len(getData) > 0 {
-				data = getData
-			}
+		switch {
+		case strings.HasPrefix(path, "sys/pprof/"):
+			passHTTPReq = true
+			responseWriter = w
+		case path == "sys/storage/raft/snapshot":
+			responseWriter = w
+		case path == "sys/internal/counters/activity/export":
+			responseWriter = w
+		case path == "sys/monitor":
+			passHTTPReq = true
+			responseWriter = w
 		}
 
 	case "POST", "PUT":
 		op = logical.UpdateOperation
-		// Parse the request if we can
-		if op == logical.UpdateOperation {
-			err := parseRequest(r, w, &data)
-			if err == io.EOF {
-				data = nil
-				err = nil
+
+		// Buffer the request body in order to allow us to peek at the beginning
+		// without consuming it. This approach involves no copying.
+		bufferedBody := newBufferedReader(r.Body)
+		r.Body = bufferedBody
+
+		// If we are uploading a snapshot or receiving an ocsp-request (which
+		// is der encoded) we don't want to parse it. Instead, we will simply
+		// add the HTTP request to the logical request object for later consumption.
+		contentType := r.Header.Get("Content-Type")
+
+		if (ra != nil && ra.IsBinaryPath(r.Context(), path)) ||
+			path == "sys/storage/raft/snapshot" || path == "sys/storage/raft/snapshot-force" {
+			passHTTPReq = true
+			origBody = r.Body
+		} else {
+			// Sample the first bytes to determine whether this should be parsed as
+			// a form or as JSON. The amount to look ahead (512 bytes) is arbitrary
+			// but extremely tolerant (i.e. allowing 511 bytes of leading whitespace
+			// and an incorrect content-type).
+			head, err := bufferedBody.Peek(512)
+			if err != nil && err != bufio.ErrBufferFull && err != io.EOF {
+				status := http.StatusBadRequest
+				logical.AdjustErrorStatusCode(&status, err)
+				return nil, nil, status, fmt.Errorf("error reading data")
 			}
-			if err != nil {
-				return nil, http.StatusBadRequest, err
+
+			if isForm(head, contentType) {
+				formData, err := parseFormRequest(r)
+				if err != nil {
+					status := http.StatusBadRequest
+					logical.AdjustErrorStatusCode(&status, err)
+					return nil, nil, status, fmt.Errorf("error parsing form data")
+				}
+
+				data = formData
+			} else {
+				origBody, err = parseJSONRequest(perfStandby, r, w, &data)
+				if err == io.EOF {
+					data = nil
+					err = nil
+				}
+				if err != nil {
+					status := http.StatusBadRequest
+					logical.AdjustErrorStatusCode(&status, err)
+					return nil, nil, status, fmt.Errorf("error parsing JSON")
+				}
 			}
+		}
+
+	case "PATCH":
+		op = logical.PatchOperation
+
+		contentTypeHeader := r.Header.Get("Content-Type")
+		contentType, _, err := mime.ParseMediaType(contentTypeHeader)
+		if err != nil {
+			status := http.StatusBadRequest
+			logical.AdjustErrorStatusCode(&status, err)
+			return nil, nil, status, err
+		}
+
+		if contentType != MergePatchContentTypeHeader {
+			return nil, nil, http.StatusUnsupportedMediaType, fmt.Errorf("PATCH requires Content-Type of %s, provided %s", MergePatchContentTypeHeader, contentType)
+		}
+
+		origBody, err = parseJSONRequest(perfStandby, r, w, &data)
+
+		if err == io.EOF {
+			data = nil
+			err = nil
+		}
+
+		if err != nil {
+			status := http.StatusBadRequest
+			logical.AdjustErrorStatusCode(&status, err)
+			return nil, nil, status, fmt.Errorf("error parsing JSON")
 		}
 
 	case "LIST":
@@ -95,112 +183,200 @@ func buildLogicalRequest(core *vault.Core, w http.ResponseWriter, r *http.Reques
 			path += "/"
 		}
 
+		data = parseQuery(r.URL.Query())
+	case "HEAD":
+		op = logical.HeaderOperation
+		data = parseQuery(r.URL.Query())
 	case "OPTIONS":
 	default:
-		return nil, http.StatusMethodNotAllowed, nil
+		return nil, nil, http.StatusMethodNotAllowed, nil
 	}
 
-	request_id, err := uuid.GenerateUUID()
+	// RFC 5785 Redirect, keep the request for auditing purposes
+	if r.URL.Path != r.RequestURI {
+		passHTTPReq = true
+	}
+
+	requestId, err := uuid.GenerateUUID()
 	if err != nil {
-		return nil, http.StatusBadRequest, errwrap.Wrapf("failed to generate identifier for the request: {{err}}", err)
+		return nil, nil, http.StatusInternalServerError, fmt.Errorf("failed to generate identifier for the request: %w", err)
 	}
 
-	req, err := requestAuth(core, r, &logical.Request{
-		ID:         request_id,
+	req := &logical.Request{
+		ID:         requestId,
 		Operation:  op,
 		Path:       path,
 		Data:       data,
 		Connection: getConnection(r),
 		Headers:    r.Header,
-	})
-	if err != nil {
-		if errwrap.Contains(err, logical.ErrPermissionDenied.Error()) {
-			return nil, http.StatusForbidden, nil
-		}
-		return nil, http.StatusBadRequest, errwrap.Wrapf("error performing token check: {{err}}", err)
 	}
+
+	if ra != nil && ra.IsLimitedPath(r.Context(), path) {
+		req.PathLimited = true
+	}
+
+	if passHTTPReq {
+		req.HTTPRequest = r
+	}
+	if responseWriter != nil {
+		req.ResponseWriter = logical.NewHTTPResponseWriter(responseWriter)
+	}
+
+	return req, origBody, 0, nil
+}
+
+func buildLogicalPath(r *http.Request) (string, int, error) {
+	ns, err := namespace.FromContext(r.Context())
+	if err != nil {
+		return "", http.StatusBadRequest, nil
+	}
+
+	path := ns.TrimmedPath(strings.TrimPrefix(r.URL.Path, "/v1/"))
+
+	switch r.Method {
+	case "GET":
+		var (
+			list bool
+			err  error
+		)
+
+		queryVals := r.URL.Query()
+
+		listStr := queryVals.Get("list")
+		if listStr != "" {
+			list, err = strconv.ParseBool(listStr)
+			if err != nil {
+				return "", http.StatusBadRequest, nil
+			}
+			if list {
+				if !strings.HasSuffix(path, "/") {
+					path += "/"
+				}
+			}
+		}
+
+	case "LIST":
+		if !strings.HasSuffix(path, "/") {
+			path += "/"
+		}
+	}
+
+	return path, 0, nil
+}
+
+func buildLogicalRequest(core *vault.Core, w http.ResponseWriter, r *http.Request, chrootNamespace string) (*logical.Request, io.ReadCloser, int, error) {
+	req, origBody, status, err := buildLogicalRequestNoAuth(core.PerfStandby(), core.RouterAccess(), w, r)
+	if err != nil || status != 0 {
+		return nil, nil, status, err
+	}
+	req.ChrootNamespace = chrootNamespace
+
+	req.SetRequiredState(r.Header.Values(VaultIndexHeaderName))
+	requestAuth(r, req)
 
 	req, err = requestWrapInfo(r, req)
 	if err != nil {
-		return nil, http.StatusBadRequest, errwrap.Wrapf("error parsing X-Vault-Wrap-TTL header: {{err}}", err)
+		return nil, nil, http.StatusBadRequest, fmt.Errorf("error parsing X-Vault-Wrap-TTL header: %w", err)
 	}
 
 	err = parseMFAHeader(req)
 	if err != nil {
-		return nil, http.StatusBadRequest, errwrap.Wrapf("failed to parse X-Vault-MFA header: {{err}}", err)
+		return nil, nil, http.StatusBadRequest, fmt.Errorf("failed to parse X-Vault-MFA header: %w", err)
 	}
 
 	err = requestPolicyOverride(r, req)
 	if err != nil {
-		return nil, http.StatusBadRequest, errwrap.Wrapf(fmt.Sprintf(`failed to parse %s header: {{err}}`, PolicyOverrideHeaderName), err)
+		return nil, nil, http.StatusBadRequest, fmt.Errorf("failed to parse %s header: %w", PolicyOverrideHeaderName, err)
 	}
 
-	return req, 0, nil
+	return req, origBody, 0, nil
 }
 
-func handleLogical(core *vault.Core) http.Handler {
-	return handleLogicalInternal(core, false)
+// handleLogical returns a handler for processing logical requests. These requests
+// may or may not end up getting forwarded under certain scenarios if the node
+// is a performance standby. Some of these cases include:
+//   - Perf standby and token with limited use count.
+//   - Perf standby and token re-validation needed (e.g. due to invalid token).
+//   - Perf standby and control group error.
+func handleLogical(core *vault.Core, chrootNamespace string) http.Handler {
+	return handleLogicalInternal(core, false, false, chrootNamespace)
 }
 
-func handleLogicalWithInjector(core *vault.Core) http.Handler {
-	return handleLogicalInternal(core, true)
+// handleLogicalWithInjector returns a handler for processing logical requests
+// that also have their logical response data injected at the top-level payload.
+// All forwarding behavior remains the same as `handleLogical`.
+func handleLogicalWithInjector(core *vault.Core, chrootNamespace string) http.Handler {
+	return handleLogicalInternal(core, true, false, chrootNamespace)
 }
 
-func handleLogicalInternal(core *vault.Core, injectDataIntoTopLevel bool) http.Handler {
+// handleLogicalNoForward returns a handler for processing logical local-only
+// requests. These types of requests never forwarded, and return an
+// `vault.ErrCannotForwardLocalOnly` error if attempted to do so.
+func handleLogicalNoForward(core *vault.Core, chrootNamespace string) http.Handler {
+	return handleLogicalInternal(core, false, true, chrootNamespace)
+}
+
+func handleLogicalRecovery(raw *vault.RawBackend, token *atomic.String) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		req, statusCode, err := buildLogicalRequest(core, w, r)
+		req, _, statusCode, err := buildLogicalRequestNoAuth(false, nil, w, r)
+		if err != nil || statusCode != 0 {
+			respondError(w, statusCode, err)
+			return
+		}
+		reqToken := r.Header.Get(consts.AuthHeaderName)
+		if reqToken == "" || token.Load() == "" || reqToken != token.Load() {
+			respondError(w, http.StatusForbidden, nil)
+			return
+		}
+
+		resp, err := raw.HandleRequest(r.Context(), req)
+		if respondErrorCommon(w, req, resp, err) {
+			return
+		}
+
+		var httpResp *logical.HTTPResponse
+		if resp != nil {
+			httpResp = logical.LogicalResponseToHTTPResponse(resp)
+			httpResp.RequestID = req.ID
+		}
+		respondOk(w, httpResp)
+	})
+}
+
+// handleLogicalInternal is a common helper that returns a handler for
+// processing logical requests. The behavior depends on the various boolean
+// toggles. Refer to usage on functions for possible behaviors.
+func handleLogicalInternal(core *vault.Core, injectDataIntoTopLevel bool, noForward bool, chrootNamespace string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		req, origBody, statusCode, err := buildLogicalRequest(core, w, r, chrootNamespace)
 		if err != nil || statusCode != 0 {
 			respondError(w, statusCode, err)
 			return
 		}
 
-		// Always forward requests that are using a limited use count token
-		if core.PerfStandby() && req.ClientTokenRemainingUses > 0 {
-			forwardRequest(core, w, r)
+		// Websockets need to be handled at HTTP layer instead of logical requests.
+		ns, err := namespace.FromContext(r.Context())
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, err)
 			return
 		}
+		trimmedPath := trimPath(ns, r.URL.Path)
 
-		// req.Path will be relative by this point. The prefix check is first
-		// to fail faster if we're not in this situation since it's a hot path
-		switch {
-		case strings.HasPrefix(req.Path, "sys/wrapping/"), strings.HasPrefix(req.Path, "auth/token/"):
-			// Get the token ns info; if we match the paths below we want to
-			// swap in the token context (but keep the relative path)
-			if err != nil {
-				core.Logger().Warn("error looking up just-set context", "error", err)
-				respondError(w, http.StatusInternalServerError, err)
+		nsPath := ns.Path
+		if ns.ID == namespace.RootNamespaceID {
+			nsPath = ""
+		}
+		if websocketPaths.HasPath(trimmedPath) {
+			handler := entHandleEventsSubscribe(core, req)
+			if handler != nil {
+				handler.ServeHTTP(w, r)
 				return
 			}
-			te := req.TokenEntry()
-			newCtx := r.Context()
-			if te != nil {
-				ns, err := vault.NamespaceByID(newCtx, te.NamespaceID, core)
-				if err != nil {
-					core.Logger().Warn("error looking up namespace from the token's namespace ID", "error", err)
-					respondError(w, http.StatusInternalServerError, err)
-					return
-				}
-				if ns != nil {
-					newCtx = namespace.ContextWithNamespace(newCtx, ns)
-				}
-			}
-			switch req.Path {
-			case "sys/wrapping/lookup", "sys/wrapping/rewrap", "sys/wrapping/unwrap":
-				r = r.WithContext(newCtx)
-				if err := wrappingVerificationFunc(r.Context(), core, req); err != nil {
-					if errwrap.Contains(err, logical.ErrPermissionDenied.Error()) {
-						respondError(w, http.StatusForbidden, err)
-					} else {
-						respondError(w, http.StatusBadRequest, err)
-					}
-					return
-				}
-
-			// The -self paths have no meaning outside of the token NS, so
-			// requests for these paths always go to the token NS
-			case "auth/token/lookup-self", "auth/token/renew-self", "auth/token/revoke-self":
-				r = r.WithContext(newCtx)
-			}
+		}
+		handler := handleEntPaths(nsPath, core, r)
+		if handler != nil {
+			handler.ServeHTTP(w, r)
+			return
 		}
 
 		// Make the internal request. We attach the connection info
@@ -208,19 +384,42 @@ func handleLogicalInternal(core *vault.Core, injectDataIntoTopLevel bool) http.H
 		// it. Vault core handles stripping this if we need to. This also
 		// handles all error cases; if we hit respondLogical, the request is a
 		// success.
-		resp, ok := request(core, w, r, req)
-		if !ok {
+		resp, ok, needsForward := request(core, w, r, req)
+		switch {
+		case errwrap.Contains(resp.Error(), consts.ErrOverloaded.Error()):
+			respondError(w, http.StatusServiceUnavailable, consts.ErrOverloaded)
+			return
+		case needsForward && noForward:
+			respondError(w, http.StatusBadRequest, vault.ErrCannotForwardLocalOnly)
+			return
+		case needsForward && !noForward:
+			if origBody != nil {
+				r.Body = origBody
+			}
+			forwardRequest(core, w, r)
+			return
+		case !ok:
+			// If not ok, we simply return. The call on request should have
+			// taken care of setting the appropriate response code and payload
+			// in this case.
+			return
+		default:
+			// Build and return the proper response if everything is fine.
+			respondLogical(core, w, r, req, resp, injectDataIntoTopLevel)
 			return
 		}
-
-		// Build the proper response
-		respondLogical(w, r, req, resp, injectDataIntoTopLevel)
 	})
 }
 
-func respondLogical(w http.ResponseWriter, r *http.Request, req *logical.Request, resp *logical.Response, injectDataIntoTopLevel bool) {
+func respondLogical(core *vault.Core, w http.ResponseWriter, r *http.Request, req *logical.Request, resp *logical.Response, injectDataIntoTopLevel bool) {
 	var httpResp *logical.HTTPResponse
 	var ret interface{}
+
+	// If vault's core has already written to the response writer do not add any
+	// additional output. Headers have already been sent.
+	if req != nil && req.ResponseWriter != nil && req.ResponseWriter.Written() {
+		return
+	}
 
 	if resp != nil {
 		if resp.Redirect != "" {
@@ -261,6 +460,8 @@ func respondLogical(w http.ResponseWriter, r *http.Request, req *logical.Request
 			ret = injector
 		}
 	}
+
+	entAdjustResponse(core, w, req)
 
 	// Respond
 	respondOk(w, ret)
@@ -358,6 +559,18 @@ WRITE_RESPONSE:
 		w.Header().Set("Content-Type", contentType)
 	}
 
+	if cacheControl, ok := resp.Data[logical.HTTPCacheControlHeader].(string); ok {
+		w.Header().Set("Cache-Control", cacheControl)
+	}
+
+	if pragma, ok := resp.Data[logical.HTTPPragmaHeader].(string); ok {
+		w.Header().Set("Pragma", pragma)
+	}
+
+	if wwwAuthn, ok := resp.Data[logical.HTTPWWWAuthenticateHeader].(string); ok {
+		w.Header().Set("WWW-Authenticate", wwwAuthn)
+	}
+
 	w.WriteHeader(status)
 	w.Write(body)
 }
@@ -366,14 +579,21 @@ WRITE_RESPONSE:
 // attaching to a logical request
 func getConnection(r *http.Request) (connection *logical.Connection) {
 	var remoteAddr string
+	var remotePort int
 
-	remoteAddr, _, err := net.SplitHostPort(r.RemoteAddr)
+	remoteAddr, port, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		remoteAddr = ""
+	} else {
+		remotePort, err = strconv.Atoi(port)
+		if err != nil {
+			remotePort = 0
+		}
 	}
 
 	connection = &logical.Connection{
 		RemoteAddr: remoteAddr,
+		RemotePort: remotePort,
 		ConnState:  r.TLS,
 	}
 	return

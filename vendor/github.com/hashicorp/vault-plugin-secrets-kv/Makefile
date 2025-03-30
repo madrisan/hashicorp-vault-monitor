@@ -46,6 +46,6 @@ fmt:
 	gofmt -w $(GOFMT_FILES)
 
 proto:
-	protoc *.proto --go_out=plugins=grpc:.
+	protoc --go_out=. --go_opt=paths=source_relative *.proto
 
 .PHONY: bin default generate test vet bootstrap fmt fmtcheck

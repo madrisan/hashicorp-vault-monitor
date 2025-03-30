@@ -1,29 +1,20 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: BUSL-1.1
+
 package version
 
 import (
 	"bytes"
 	"fmt"
+	"time"
 )
 
-var (
-	// The git commit that was compiled. This will be filled in by the compiler.
-	GitCommit   string
-	GitDescribe string
-
-	// Whether cgo is enabled or not; set at build time
-	CgoEnabled bool
-
-	Version           = "unknown"
-	VersionPrerelease = "unknown"
-	VersionMetadata   = ""
-)
-
-// VersionInfo
 type VersionInfo struct {
-	Revision          string
-	Version           string
-	VersionPrerelease string
-	VersionMetadata   string
+	Revision          string `json:"revision,omitempty"`
+	Version           string `json:"version,omitempty"`
+	VersionPrerelease string `json:"version_prerelease,omitempty"`
+	VersionMetadata   string `json:"version_metadata,omitempty"`
+	BuildDate         string `json:"build_date,omitempty"`
 }
 
 func GetVersion() *VersionInfo {
@@ -33,16 +24,22 @@ func GetVersion() *VersionInfo {
 	if GitDescribe != "" {
 		ver = GitDescribe
 	}
-	if GitDescribe == "" && rel == "" && VersionPrerelease != "" {
-		rel = "dev"
-	}
 
 	return &VersionInfo{
 		Revision:          GitCommit,
 		Version:           ver,
 		VersionPrerelease: rel,
 		VersionMetadata:   md,
+		BuildDate:         BuildDate,
 	}
+}
+
+func GetVaultBuildDate() (time.Time, error) {
+	buildDate, err := time.Parse(time.RFC3339, BuildDate)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse build date based on RFC3339: %w", err)
+	}
+	return buildDate, nil
 }
 
 func (c *VersionInfo) VersionNumber() string {
@@ -50,7 +47,7 @@ func (c *VersionInfo) VersionNumber() string {
 		return "(version unknown)"
 	}
 
-	version := fmt.Sprintf("%s", c.Version)
+	version := c.Version
 
 	if c.VersionPrerelease != "" {
 		version = fmt.Sprintf("%s-%s", version, c.VersionPrerelease)
@@ -81,6 +78,10 @@ func (c *VersionInfo) FullVersionNumber(rev bool) string {
 
 	if rev && c.Revision != "" {
 		fmt.Fprintf(&versionString, " (%s)", c.Revision)
+	}
+
+	if c.BuildDate != "" {
+		fmt.Fprintf(&versionString, ", built %s", c.BuildDate)
 	}
 
 	return versionString.String()

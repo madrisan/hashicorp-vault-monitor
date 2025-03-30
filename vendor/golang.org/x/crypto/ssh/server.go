@@ -45,16 +45,66 @@ type Permissions struct {
 	Extensions map[string]string
 }
 
+type GSSAPIWithMICConfig struct {
+	// AllowLogin, must be set, is called when gssapi-with-mic
+	// authentication is selected (RFC 4462 section 3). The srcName is from the
+	// results of the GSS-API authentication. The format is username@DOMAIN.
+	// GSSAPI just guarantees to the server who the user is, but not if they can log in, and with what permissions.
+	// This callback is called after the user identity is established with GSSAPI to decide if the user can login with
+	// which permissions. If the user is allowed to login, it should return a nil error.
+	AllowLogin func(conn ConnMetadata, srcName string) (*Permissions, error)
+
+	// Server must be set. It's the implementation
+	// of the GSSAPIServer interface. See GSSAPIServer interface for details.
+	Server GSSAPIServer
+}
+
+// SendAuthBanner implements [ServerPreAuthConn].
+func (s *connection) SendAuthBanner(msg string) error {
+	return s.transport.writePacket(Marshal(&userAuthBannerMsg{
+		Message: msg,
+	}))
+}
+
+func (*connection) unexportedMethodForFutureProofing() {}
+
+// ServerPreAuthConn is the interface available on an incoming server
+// connection before authentication has completed.
+type ServerPreAuthConn interface {
+	unexportedMethodForFutureProofing() // permits growing ServerPreAuthConn safely later, ala testing.TB
+
+	ConnMetadata
+
+	// SendAuthBanner sends a banner message to the client.
+	// It returns an error once the authentication phase has ended.
+	SendAuthBanner(string) error
+}
+
 // ServerConfig holds server specific configuration data.
 type ServerConfig struct {
 	// Config contains configuration shared between client and server.
 	Config
 
+	// PublicKeyAuthAlgorithms specifies the supported client public key
+	// authentication algorithms. Note that this should not include certificate
+	// types since those use the underlying algorithm. This list is sent to the
+	// client if it supports the server-sig-algs extension. Order is irrelevant.
+	// If unspecified then a default set of algorithms is used.
+	PublicKeyAuthAlgorithms []string
+
 	hostKeys []Signer
 
 	// NoClientAuth is true if clients are allowed to connect without
 	// authenticating.
+	// To determine NoClientAuth at runtime, set NoClientAuth to true
+	// and the optional NoClientAuthCallback to a non-nil value.
 	NoClientAuth bool
+
+	// NoClientAuthCallback, if non-nil, is called when a user
+	// attempts to authenticate with auth method "none".
+	// NoClientAuth must also be set to true for this be used, or
+	// this func is unused.
+	NoClientAuthCallback func(ConnMetadata) (*Permissions, error)
 
 	// MaxAuthTries specifies the maximum number of authentication attempts
 	// permitted per connection. If set to a negative number, the number of
@@ -89,6 +139,12 @@ type ServerConfig struct {
 	// attempts.
 	AuthLogCallback func(conn ConnMetadata, method string, err error)
 
+	// PreAuthConnCallback, if non-nil, is called upon receiving a new connection
+	// before any authentication has started. The provided ServerPreAuthConn
+	// can be used at any time before authentication is complete, including
+	// after this callback has returned.
+	PreAuthConnCallback func(ServerPreAuthConn)
+
 	// ServerVersion is the version identification string to announce in
 	// the public handshake.
 	// If empty, a reasonable default is used.
@@ -99,10 +155,14 @@ type ServerConfig struct {
 	// BannerCallback, if present, is called and the return string is sent to
 	// the client after key exchange completed but before authentication.
 	BannerCallback func(conn ConnMetadata) string
+
+	// GSSAPIWithMICConfig includes gssapi server and callback, which if both non-nil, is used
+	// when gssapi-with-mic authentication is selected (RFC 4462 section 3).
+	GSSAPIWithMICConfig *GSSAPIWithMICConfig
 }
 
 // AddHostKey adds a private key as a host key. If an existing host
-// key exists with the same algorithm, it is overwritten. Each server
+// key exists with the same public key format, it is replaced. Each server
 // config must have at least one host key.
 func (s *ServerConfig) AddHostKey(key Signer) {
 	for i, k := range s.hostKeys {
@@ -116,7 +176,7 @@ func (s *ServerConfig) AddHostKey(key Signer) {
 }
 
 // cachedPubKey contains the results of querying whether a public key is
-// acceptable for a user.
+// acceptable for a user. This is a FIFO cache.
 type cachedPubKey struct {
 	user       string
 	pubKeyData []byte
@@ -124,7 +184,13 @@ type cachedPubKey struct {
 	perms      *Permissions
 }
 
-const maxCachedPubKeys = 16
+// maxCachedPubKeys is the number of cache entries we store.
+//
+// Due to consistent misuse of the PublicKeyCallback API, we have reduced this
+// to 1, such that the only key in the cache is the most recently seen one. This
+// forces the behavior that the last call to PublicKeyCallback will always be
+// with the key that is used for authentication.
+const maxCachedPubKeys = 1
 
 // pubKeyCache caches tests for public keys.  Since SSH clients
 // will query whether a public key is acceptable before attempting to
@@ -146,9 +212,10 @@ func (c *pubKeyCache) get(user string, pubKeyData []byte) (cachedPubKey, bool) {
 
 // add adds the given tuple to the cache.
 func (c *pubKeyCache) add(candidate cachedPubKey) {
-	if len(c.keys) < maxCachedPubKeys {
-		c.keys = append(c.keys, candidate)
+	if len(c.keys) >= maxCachedPubKeys {
+		c.keys = c.keys[1:]
 	}
+	c.keys = append(c.keys, candidate)
 }
 
 // ServerConn is an authenticated SSH connection, as seen from the
@@ -175,6 +242,23 @@ func NewServerConn(c net.Conn, config *ServerConfig) (*ServerConn, <-chan NewCha
 	if fullConf.MaxAuthTries == 0 {
 		fullConf.MaxAuthTries = 6
 	}
+	if len(fullConf.PublicKeyAuthAlgorithms) == 0 {
+		fullConf.PublicKeyAuthAlgorithms = supportedPubKeyAuthAlgos
+	} else {
+		for _, algo := range fullConf.PublicKeyAuthAlgorithms {
+			if !contains(supportedPubKeyAuthAlgos, algo) {
+				c.Close()
+				return nil, nil, nil, fmt.Errorf("ssh: unsupported public key authentication algorithm %s", algo)
+			}
+		}
+	}
+	// Check if the config contains any unsupported key exchanges
+	for _, kex := range fullConf.KeyExchanges {
+		if _, ok := serverForbiddenKexAlgos[kex]; ok {
+			c.Close()
+			return nil, nil, nil, fmt.Errorf("ssh: unsupported key exchange %s for server", kex)
+		}
+	}
 
 	s := &connection{
 		sshConn: sshConn{conn: c},
@@ -188,9 +272,10 @@ func NewServerConn(c net.Conn, config *ServerConfig) (*ServerConn, <-chan NewCha
 }
 
 // signAndMarshal signs the data with the appropriate algorithm,
-// and serializes the result in SSH wire format.
-func signAndMarshal(k Signer, rand io.Reader, data []byte) ([]byte, error) {
-	sig, err := k.Sign(rand, data)
+// and serializes the result in SSH wire format. algo is the negotiate
+// algorithm and may be a certificate type.
+func signAndMarshal(k AlgorithmSigner, rand io.Reader, data []byte, algo string) ([]byte, error) {
+	sig, err := k.SignWithAlgorithm(rand, data, underlyingAlgo(algo))
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +289,9 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 		return nil, errors.New("ssh: server has no host keys")
 	}
 
-	if !config.NoClientAuth && config.PasswordCallback == nil && config.PublicKeyCallback == nil && config.KeyboardInteractiveCallback == nil {
+	if !config.NoClientAuth && config.PasswordCallback == nil && config.PublicKeyCallback == nil &&
+		config.KeyboardInteractiveCallback == nil && (config.GSSAPIWithMICConfig == nil ||
+		config.GSSAPIWithMICConfig.AllowLogin == nil || config.GSSAPIWithMICConfig.Server == nil) {
 		return nil, errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
 	}
 
@@ -256,15 +343,6 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	return perms, err
 }
 
-func isAcceptableAlgo(algo string) bool {
-	switch algo {
-	case KeyAlgoRSA, KeyAlgoDSA, KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521, KeyAlgoED25519,
-		CertAlgoRSAv01, CertAlgoDSAv01, CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01, CertAlgoED25519v01:
-		return true
-	}
-	return false
-}
-
 func checkSourceAddress(addr net.Addr, sourceAddrs string) error {
 	if addr == nil {
 		return errors.New("ssh: no address known for client, but source-address match required")
@@ -295,6 +373,75 @@ func checkSourceAddress(addr net.Addr, sourceAddrs string) error {
 	return fmt.Errorf("ssh: remote address %v is not allowed because of source-address restriction", addr)
 }
 
+func gssExchangeToken(gssapiConfig *GSSAPIWithMICConfig, token []byte, s *connection,
+	sessionID []byte, userAuthReq userAuthRequestMsg) (authErr error, perms *Permissions, err error) {
+	gssAPIServer := gssapiConfig.Server
+	defer gssAPIServer.DeleteSecContext()
+	var srcName string
+	for {
+		var (
+			outToken     []byte
+			needContinue bool
+		)
+		outToken, srcName, needContinue, err = gssAPIServer.AcceptSecContext(token)
+		if err != nil {
+			return err, nil, nil
+		}
+		if len(outToken) != 0 {
+			if err := s.transport.writePacket(Marshal(&userAuthGSSAPIToken{
+				Token: outToken,
+			})); err != nil {
+				return nil, nil, err
+			}
+		}
+		if !needContinue {
+			break
+		}
+		packet, err := s.transport.readPacket()
+		if err != nil {
+			return nil, nil, err
+		}
+		userAuthGSSAPITokenReq := &userAuthGSSAPIToken{}
+		if err := Unmarshal(packet, userAuthGSSAPITokenReq); err != nil {
+			return nil, nil, err
+		}
+		token = userAuthGSSAPITokenReq.Token
+	}
+	packet, err := s.transport.readPacket()
+	if err != nil {
+		return nil, nil, err
+	}
+	userAuthGSSAPIMICReq := &userAuthGSSAPIMIC{}
+	if err := Unmarshal(packet, userAuthGSSAPIMICReq); err != nil {
+		return nil, nil, err
+	}
+	mic := buildMIC(string(sessionID), userAuthReq.User, userAuthReq.Service, userAuthReq.Method)
+	if err := gssAPIServer.VerifyMIC(mic, userAuthGSSAPIMICReq.MIC); err != nil {
+		return err, nil, nil
+	}
+	perms, authErr = gssapiConfig.AllowLogin(s, srcName)
+	return authErr, perms, nil
+}
+
+// isAlgoCompatible checks if the signature format is compatible with the
+// selected algorithm taking into account edge cases that occur with old
+// clients.
+func isAlgoCompatible(algo, sigFormat string) bool {
+	// Compatibility for old clients.
+	//
+	// For certificate authentication with OpenSSH 7.2-7.7 signature format can
+	// be rsa-sha2-256 or rsa-sha2-512 for the algorithm
+	// ssh-rsa-cert-v01@openssh.com.
+	//
+	// With gpg-agent < 2.2.6 the algorithm can be rsa-sha2-256 or rsa-sha2-512
+	// for signature format ssh-rsa.
+	if isRSA(algo) && isRSA(sigFormat) {
+		return true
+	}
+	// Standard case: the underlying algorithm must match the signature format.
+	return underlyingAlgo(algo) == sigFormat
+}
+
 // ServerAuthError represents server authentication errors and is
 // sometimes returned by NewServerConn. It appends any authentication
 // errors that may occur, and is returned if all of the authentication
@@ -313,6 +460,35 @@ func (l ServerAuthError) Error() string {
 	return "[" + strings.Join(errs, ", ") + "]"
 }
 
+// ServerAuthCallbacks defines server-side authentication callbacks.
+type ServerAuthCallbacks struct {
+	// PasswordCallback behaves like [ServerConfig.PasswordCallback].
+	PasswordCallback func(conn ConnMetadata, password []byte) (*Permissions, error)
+
+	// PublicKeyCallback behaves like [ServerConfig.PublicKeyCallback].
+	PublicKeyCallback func(conn ConnMetadata, key PublicKey) (*Permissions, error)
+
+	// KeyboardInteractiveCallback behaves like [ServerConfig.KeyboardInteractiveCallback].
+	KeyboardInteractiveCallback func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error)
+
+	// GSSAPIWithMICConfig behaves like [ServerConfig.GSSAPIWithMICConfig].
+	GSSAPIWithMICConfig *GSSAPIWithMICConfig
+}
+
+// PartialSuccessError can be returned by any of the [ServerConfig]
+// authentication callbacks to indicate to the client that authentication has
+// partially succeeded, but further steps are required.
+type PartialSuccessError struct {
+	// Next defines the authentication callbacks to apply to further steps. The
+	// available methods communicated to the client are based on the non-nil
+	// ServerAuthCallbacks fields.
+	Next ServerAuthCallbacks
+}
+
+func (p *PartialSuccessError) Error() string {
+	return "ssh: authenticated with partial success"
+}
+
 // ErrNoAuth is the error value returned if no
 // authentication method has been passed yet. This happens as a normal
 // part of the authentication loop, since the client first tries
@@ -320,14 +496,46 @@ func (l ServerAuthError) Error() string {
 // It is returned in ServerAuthError.Errors from NewServerConn.
 var ErrNoAuth = errors.New("ssh: no auth passed yet")
 
+// BannerError is an error that can be returned by authentication handlers in
+// ServerConfig to send a banner message to the client.
+type BannerError struct {
+	Err     error
+	Message string
+}
+
+func (b *BannerError) Unwrap() error {
+	return b.Err
+}
+
+func (b *BannerError) Error() string {
+	if b.Err == nil {
+		return b.Message
+	}
+	return b.Err.Error()
+}
+
 func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, error) {
+	if config.PreAuthConnCallback != nil {
+		config.PreAuthConnCallback(s)
+	}
+
 	sessionID := s.transport.getSessionID()
 	var cache pubKeyCache
 	var perms *Permissions
 
 	authFailures := 0
+	noneAuthCount := 0
 	var authErrs []error
-	var displayedBanner bool
+	var calledBannerCallback bool
+	partialSuccessReturned := false
+	// Set the initial authentication callbacks from the config. They can be
+	// changed if a PartialSuccessError is returned.
+	authConfig := ServerAuthCallbacks{
+		PasswordCallback:            config.PasswordCallback,
+		PublicKeyCallback:           config.PublicKeyCallback,
+		KeyboardInteractiveCallback: config.KeyboardInteractiveCallback,
+		GSSAPIWithMICConfig:         config.GSSAPIWithMICConfig,
+	}
 
 userAuthLoop:
 	for {
@@ -340,8 +548,8 @@ userAuthLoop:
 			if err := s.transport.writePacket(Marshal(discMsg)); err != nil {
 				return nil, err
 			}
-
-			return nil, discMsg
+			authErrs = append(authErrs, discMsg)
+			return nil, &ServerAuthError{Errors: authErrs}
 		}
 
 		var userAuthReq userAuthRequestMsg
@@ -358,16 +566,17 @@ userAuthLoop:
 			return nil, errors.New("ssh: client attempted to negotiate for unknown service: " + userAuthReq.Service)
 		}
 
+		if s.user != userAuthReq.User && partialSuccessReturned {
+			return nil, fmt.Errorf("ssh: client changed the user after a partial success authentication, previous user %q, current user %q",
+				s.user, userAuthReq.User)
+		}
+
 		s.user = userAuthReq.User
 
-		if !displayedBanner && config.BannerCallback != nil {
-			displayedBanner = true
-			msg := config.BannerCallback(s)
-			if msg != "" {
-				bannerMsg := &userAuthBannerMsg{
-					Message: msg,
-				}
-				if err := s.transport.writePacket(Marshal(bannerMsg)); err != nil {
+		if !calledBannerCallback && config.BannerCallback != nil {
+			calledBannerCallback = true
+			if msg := config.BannerCallback(s); msg != "" {
+				if err := s.SendAuthBanner(msg); err != nil {
 					return nil, err
 				}
 			}
@@ -378,16 +587,18 @@ userAuthLoop:
 
 		switch userAuthReq.Method {
 		case "none":
-			if config.NoClientAuth {
-				authErr = nil
-			}
-
-			// allow initial attempt of 'none' without penalty
-			if authFailures == 0 {
-				authFailures--
+			noneAuthCount++
+			// We don't allow none authentication after a partial success
+			// response.
+			if config.NoClientAuth && !partialSuccessReturned {
+				if config.NoClientAuthCallback != nil {
+					perms, authErr = config.NoClientAuthCallback(s)
+				} else {
+					authErr = nil
+				}
 			}
 		case "password":
-			if config.PasswordCallback == nil {
+			if authConfig.PasswordCallback == nil {
 				authErr = errors.New("ssh: password auth not configured")
 				break
 			}
@@ -401,17 +612,17 @@ userAuthLoop:
 				return nil, parseError(msgUserAuthRequest)
 			}
 
-			perms, authErr = config.PasswordCallback(s, password)
+			perms, authErr = authConfig.PasswordCallback(s, password)
 		case "keyboard-interactive":
-			if config.KeyboardInteractiveCallback == nil {
-				authErr = errors.New("ssh: keyboard-interactive auth not configubred")
+			if authConfig.KeyboardInteractiveCallback == nil {
+				authErr = errors.New("ssh: keyboard-interactive auth not configured")
 				break
 			}
 
 			prompter := &sshClientKeyboardInteractive{s}
-			perms, authErr = config.KeyboardInteractiveCallback(s, prompter.Challenge)
+			perms, authErr = authConfig.KeyboardInteractiveCallback(s, prompter.Challenge)
 		case "publickey":
-			if config.PublicKeyCallback == nil {
+			if authConfig.PublicKeyCallback == nil {
 				authErr = errors.New("ssh: publickey auth not configured")
 				break
 			}
@@ -426,7 +637,7 @@ userAuthLoop:
 				return nil, parseError(msgUserAuthRequest)
 			}
 			algo := string(algoBytes)
-			if !isAcceptableAlgo(algo) {
+			if !contains(config.PublicKeyAuthAlgorithms, underlyingAlgo(algo)) {
 				authErr = fmt.Errorf("ssh: algorithm %q not accepted", algo)
 				break
 			}
@@ -445,11 +656,18 @@ userAuthLoop:
 			if !ok {
 				candidate.user = s.user
 				candidate.pubKeyData = pubKeyData
-				candidate.perms, candidate.result = config.PublicKeyCallback(s, pubKey)
-				if candidate.result == nil && candidate.perms != nil && candidate.perms.CriticalOptions != nil && candidate.perms.CriticalOptions[sourceAddressCriticalOption] != "" {
-					candidate.result = checkSourceAddress(
+				candidate.perms, candidate.result = authConfig.PublicKeyCallback(s, pubKey)
+				_, isPartialSuccessError := candidate.result.(*PartialSuccessError)
+
+				if (candidate.result == nil || isPartialSuccessError) &&
+					candidate.perms != nil &&
+					candidate.perms.CriticalOptions != nil &&
+					candidate.perms.CriticalOptions[sourceAddressCriticalOption] != "" {
+					if err := checkSourceAddress(
 						s.RemoteAddr(),
-						candidate.perms.CriticalOptions[sourceAddressCriticalOption])
+						candidate.perms.CriticalOptions[sourceAddressCriticalOption]); err != nil {
+						candidate.result = err
+					}
 				}
 				cache.add(candidate)
 			}
@@ -461,8 +679,8 @@ userAuthLoop:
 				if len(payload) > 0 {
 					return nil, parseError(msgUserAuthRequest)
 				}
-
-				if candidate.result == nil {
+				_, isPartialSuccessError := candidate.result.(*PartialSuccessError)
+				if candidate.result == nil || isPartialSuccessError {
 					okMsg := userAuthPubKeyOkMsg{
 						Algo:   algo,
 						PubKey: pubKeyData,
@@ -478,15 +696,31 @@ userAuthLoop:
 				if !ok || len(payload) > 0 {
 					return nil, parseError(msgUserAuthRequest)
 				}
+				// Ensure the declared public key algo is compatible with the
+				// decoded one. This check will ensure we don't accept e.g.
+				// ssh-rsa-cert-v01@openssh.com algorithm with ssh-rsa public
+				// key type. The algorithm and public key type must be
+				// consistent: both must be certificate algorithms, or neither.
+				if !contains(algorithmsForKeyFormat(pubKey.Type()), algo) {
+					authErr = fmt.Errorf("ssh: public key type %q not compatible with selected algorithm %q",
+						pubKey.Type(), algo)
+					break
+				}
 				// Ensure the public key algo and signature algo
 				// are supported.  Compare the private key
 				// algorithm name that corresponds to algo with
 				// sig.Format.  This is usually the same, but
 				// for certs, the names differ.
-				if !isAcceptableAlgo(sig.Format) {
+				if !contains(config.PublicKeyAuthAlgorithms, sig.Format) {
+					authErr = fmt.Errorf("ssh: algorithm %q not accepted", sig.Format)
 					break
 				}
-				signedData := buildDataSignedForAuth(sessionID, userAuthReq, algoBytes, pubKeyData)
+				if !isAlgoCompatible(algo, sig.Format) {
+					authErr = fmt.Errorf("ssh: signature %q not compatible with selected algorithm %q", sig.Format, algo)
+					break
+				}
+
+				signedData := buildDataSignedForAuth(sessionID, userAuthReq, algo, pubKeyData)
 
 				if err := pubKey.Verify(signedData, sig); err != nil {
 					return nil, err
@@ -494,6 +728,53 @@ userAuthLoop:
 
 				authErr = candidate.result
 				perms = candidate.perms
+			}
+		case "gssapi-with-mic":
+			if authConfig.GSSAPIWithMICConfig == nil {
+				authErr = errors.New("ssh: gssapi-with-mic auth not configured")
+				break
+			}
+			gssapiConfig := authConfig.GSSAPIWithMICConfig
+			userAuthRequestGSSAPI, err := parseGSSAPIPayload(userAuthReq.Payload)
+			if err != nil {
+				return nil, parseError(msgUserAuthRequest)
+			}
+			// OpenSSH supports Kerberos V5 mechanism only for GSS-API authentication.
+			if userAuthRequestGSSAPI.N == 0 {
+				authErr = fmt.Errorf("ssh: Mechanism negotiation is not supported")
+				break
+			}
+			var i uint32
+			present := false
+			for i = 0; i < userAuthRequestGSSAPI.N; i++ {
+				if userAuthRequestGSSAPI.OIDS[i].Equal(krb5Mesh) {
+					present = true
+					break
+				}
+			}
+			if !present {
+				authErr = fmt.Errorf("ssh: GSSAPI authentication must use the Kerberos V5 mechanism")
+				break
+			}
+			// Initial server response, see RFC 4462 section 3.3.
+			if err := s.transport.writePacket(Marshal(&userAuthGSSAPIResponse{
+				SupportMech: krb5OID,
+			})); err != nil {
+				return nil, err
+			}
+			// Exchange token, see RFC 4462 section 3.4.
+			packet, err := s.transport.readPacket()
+			if err != nil {
+				return nil, err
+			}
+			userAuthGSSAPITokenReq := &userAuthGSSAPIToken{}
+			if err := Unmarshal(packet, userAuthGSSAPITokenReq); err != nil {
+				return nil, err
+			}
+			authErr, perms, err = gssExchangeToken(gssapiConfig, userAuthGSSAPITokenReq.Token, s, sessionID,
+				userAuthReq)
+			if err != nil {
+				return nil, err
 			}
 		default:
 			authErr = fmt.Errorf("ssh: unknown method %q", userAuthReq.Method)
@@ -505,25 +786,83 @@ userAuthLoop:
 			config.AuthLogCallback(s, userAuthReq.Method, authErr)
 		}
 
+		var bannerErr *BannerError
+		if errors.As(authErr, &bannerErr) {
+			if bannerErr.Message != "" {
+				if err := s.SendAuthBanner(bannerErr.Message); err != nil {
+					return nil, err
+				}
+			}
+		}
+
 		if authErr == nil {
 			break userAuthLoop
 		}
 
-		authFailures++
-
 		var failureMsg userAuthFailureMsg
-		if config.PasswordCallback != nil {
+
+		if partialSuccess, ok := authErr.(*PartialSuccessError); ok {
+			// After a partial success error we don't allow changing the user
+			// name and execute the NoClientAuthCallback.
+			partialSuccessReturned = true
+
+			// In case a partial success is returned, the server may send
+			// a new set of authentication methods.
+			authConfig = partialSuccess.Next
+
+			// Reset pubkey cache, as the new PublicKeyCallback might
+			// accept a different set of public keys.
+			cache = pubKeyCache{}
+
+			// Send back a partial success message to the user.
+			failureMsg.PartialSuccess = true
+		} else {
+			// Allow initial attempt of 'none' without penalty.
+			if authFailures > 0 || userAuthReq.Method != "none" || noneAuthCount != 1 {
+				authFailures++
+			}
+			if config.MaxAuthTries > 0 && authFailures >= config.MaxAuthTries {
+				// If we have hit the max attempts, don't bother sending the
+				// final SSH_MSG_USERAUTH_FAILURE message, since there are
+				// no more authentication methods which can be attempted,
+				// and this message may cause the client to re-attempt
+				// authentication while we send the disconnect message.
+				// Continue, and trigger the disconnect at the start of
+				// the loop.
+				//
+				// The SSH specification is somewhat confusing about this,
+				// RFC 4252 Section 5.1 requires each authentication failure
+				// be responded to with a respective SSH_MSG_USERAUTH_FAILURE
+				// message, but Section 4 says the server should disconnect
+				// after some number of attempts, but it isn't explicit which
+				// message should take precedence (i.e. should there be a failure
+				// message than a disconnect message, or if we are going to
+				// disconnect, should we only send that message.)
+				//
+				// Either way, OpenSSH disconnects immediately after the last
+				// failed authentication attempt, and given they are typically
+				// considered the golden implementation it seems reasonable
+				// to match that behavior.
+				continue
+			}
+		}
+
+		if authConfig.PasswordCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "password")
 		}
-		if config.PublicKeyCallback != nil {
+		if authConfig.PublicKeyCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "publickey")
 		}
-		if config.KeyboardInteractiveCallback != nil {
+		if authConfig.KeyboardInteractiveCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "keyboard-interactive")
+		}
+		if authConfig.GSSAPIWithMICConfig != nil && authConfig.GSSAPIWithMICConfig.Server != nil &&
+			authConfig.GSSAPIWithMICConfig.AllowLogin != nil {
+			failureMsg.Methods = append(failureMsg.Methods, "gssapi-with-mic")
 		}
 
 		if len(failureMsg.Methods) == 0 {
-			return nil, errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
+			return nil, errors.New("ssh: no authentication methods available")
 		}
 
 		if err := s.transport.writePacket(Marshal(&failureMsg)); err != nil {
@@ -543,7 +882,7 @@ type sshClientKeyboardInteractive struct {
 	*connection
 }
 
-func (c *sshClientKeyboardInteractive) Challenge(user, instruction string, questions []string, echos []bool) (answers []string, err error) {
+func (c *sshClientKeyboardInteractive) Challenge(name, instruction string, questions []string, echos []bool) (answers []string, err error) {
 	if len(questions) != len(echos) {
 		return nil, errors.New("ssh: echos and questions must have equal length")
 	}
@@ -555,6 +894,7 @@ func (c *sshClientKeyboardInteractive) Challenge(user, instruction string, quest
 	}
 
 	if err := c.transport.writePacket(Marshal(&userAuthInfoRequestMsg{
+		Name:        name,
 		Instruction: instruction,
 		NumPrompts:  uint32(len(questions)),
 		Prompts:     prompts,

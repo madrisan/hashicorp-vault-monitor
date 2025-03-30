@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package kv
 
 import (
@@ -6,16 +9,17 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"strconv"
 	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/hashicorp/vault/helper/keysutil"
-	"github.com/hashicorp/vault/helper/locksutil"
-	"github.com/hashicorp/vault/helper/salt"
-	"github.com/hashicorp/vault/logical"
-	"github.com/hashicorp/vault/logical/framework"
+	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/helper/keysutil"
+	"github.com/hashicorp/vault/sdk/helper/locksutil"
+	"github.com/hashicorp/vault/sdk/helper/salt"
+	"github.com/hashicorp/vault/sdk/logical"
 )
 
 const (
@@ -31,6 +35,12 @@ const (
 	// defaultMaxVersions is the number of versions to keep around unless set by
 	// the config or key configuration.
 	defaultMaxVersions uint32 = 10
+
+	// operationPrefixKVv1 is used as prefixes for OpenAPI operation id's.
+	operationPrefixKVv1 = "kv-v1"
+
+	// operationPrefixKVv2 is used as prefixes for OpenAPI operation id's.
+	operationPrefixKVv2 = "kv-v2"
 )
 
 // versionedKVBackend implements logical.Backend
@@ -64,6 +74,10 @@ type versionedKVBackend struct {
 	// globalConfig is a cached value for fast lookup
 	globalConfig     *Configuration
 	globalConfigLock *sync.RWMutex
+
+	// upgradeCancelFunc is used to be able to shut down the upgrade checking
+	// goroutine from cleanup
+	upgradeCancelFunc context.CancelFunc
 }
 
 // Factory will return a logical backend of type versionedKVBackend or
@@ -75,7 +89,7 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 	var err error
 	switch version {
 	case "1", "":
-		return LeaseSwitchedPassthroughBackend(ctx, conf, conf.Config["leased_passthrough"] == "true")
+		return LeaseSwitchedPassthroughBackendFactory(ctx, conf, conf.Config["leased_passthrough"] == "true")
 	case "2":
 		b, err = VersionedKVFactory(ctx, conf)
 	}
@@ -86,11 +100,14 @@ func Factory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend,
 	return b, nil
 }
 
-// Factory returns a new backend as logical.Backend.
+// VersionedKVFactory returns a new KVV2 backend as logical.Backend.
 func VersionedKVFactory(ctx context.Context, conf *logical.BackendConfig) (logical.Backend, error) {
+	upgradeCtx, upgradeCancelFunc := context.WithCancel(ctx)
+
 	b := &versionedKVBackend{
-		upgrading:        new(uint32),
-		globalConfigLock: new(sync.RWMutex),
+		upgrading:         new(uint32),
+		globalConfigLock:  new(sync.RWMutex),
+		upgradeCancelFunc: upgradeCancelFunc,
 	}
 	if conf.BackendUUID == "" {
 		return nil, errors.New("could not initialize versioned K/V Store, no UUID was provided")
@@ -100,6 +117,7 @@ func VersionedKVFactory(ctx context.Context, conf *logical.BackendConfig) (logic
 	b.Backend = &framework.Backend{
 		BackendType: logical.TypeLogical,
 		Help:        backendHelp,
+		Invalidate:  b.Invalidate,
 
 		PathsSpecial: &logical.Paths{
 			SealWrapStorage: []string{
@@ -120,6 +138,7 @@ func VersionedKVFactory(ctx context.Context, conf *logical.BackendConfig) (logic
 				pathData(b),
 				pathMetadata(b),
 				pathDestroy(b),
+				pathSubkeys(b),
 			},
 			pathsDelete(b),
 
@@ -140,30 +159,13 @@ func VersionedKVFactory(ctx context.Context, conf *logical.BackendConfig) (logic
 		return nil, err
 	}
 	if !upgradeDone {
-		err := b.Upgrade(ctx, conf.StorageView)
+		err := b.Upgrade(upgradeCtx, conf.StorageView)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return b, nil
-}
-
-func (b *versionedKVBackend) upgradeDone(ctx context.Context, s logical.Storage) (bool, error) {
-	upgradeEntry, err := s.Get(ctx, path.Join(b.storagePrefix, "upgrading"))
-	if err != nil {
-		return false, err
-	}
-
-	var upgradeInfo UpgradeInfo
-	if upgradeEntry != nil {
-		err := proto.Unmarshal(upgradeEntry.Value, &upgradeInfo)
-		if err != nil {
-			return false, err
-		}
-	}
-
-	return upgradeInfo.Done, nil
 }
 
 func pathInvalid(b *versionedKVBackend) []*framework.Path {
@@ -179,6 +181,8 @@ func pathInvalid(b *versionedKVBackend) []*framework.Path {
 		switch req.Operation {
 		case logical.CreateOperation, logical.UpdateOperation:
 			subCommand = "put"
+		case logical.PatchOperation:
+			subCommand = "patch"
 		case logical.ReadOperation:
 			subCommand = "get"
 		case logical.ListOperation:
@@ -194,16 +198,22 @@ func pathInvalid(b *versionedKVBackend) []*framework.Path {
 	return []*framework.Path{
 		&framework.Path{
 			Pattern: ".*",
-			Callbacks: map[logical.Operation]framework.OperationFunc{
-				logical.UpdateOperation: handler,
-				logical.CreateOperation: handler,
-				logical.ReadOperation:   handler,
-				logical.DeleteOperation: handler,
-				logical.ListOperation:   handler,
+			Operations: map[logical.Operation]framework.OperationHandler{
+				logical.UpdateOperation: &framework.PathOperation{Callback: handler, Unpublished: true},
+				logical.PatchOperation:  &framework.PathOperation{Callback: handler, Unpublished: true},
+				logical.ReadOperation:   &framework.PathOperation{Callback: handler, Unpublished: true},
+				logical.DeleteOperation: &framework.PathOperation{Callback: handler, Unpublished: true},
+				logical.ListOperation:   &framework.PathOperation{Callback: handler, Unpublished: true},
 			},
 
 			HelpDescription: pathInvalidHelp,
 		},
+	}
+}
+
+func (b *versionedKVBackend) Cleanup(ctx context.Context) {
+	if b.upgradeCancelFunc != nil {
+		b.upgradeCancelFunc()
 	}
 }
 
@@ -274,7 +284,7 @@ func (b *versionedKVBackend) policy(ctx context.Context, s logical.Storage) (*ke
 		VersionTemplate:      keysutil.EncryptedKeyPolicyVersionTpl,
 	})
 
-	err = policy.Rotate(ctx, s)
+	err = policy.Rotate(ctx, s, b.GetRandomReader())
 	if err != nil {
 		return nil, err
 	}
@@ -321,8 +331,9 @@ func (b *versionedKVBackend) config(ctx context.Context, s logical.Storage) (*Co
 	if b.globalConfig != nil {
 		defer b.globalConfigLock.RUnlock()
 		return &Configuration{
-			CasRequired: b.globalConfig.CasRequired,
-			MaxVersions: b.globalConfig.MaxVersions,
+			CasRequired:        b.globalConfig.CasRequired,
+			MaxVersions:        b.globalConfig.MaxVersions,
+			DeleteVersionAfter: b.globalConfig.DeleteVersionAfter,
 		}, nil
 	}
 
@@ -333,8 +344,9 @@ func (b *versionedKVBackend) config(ctx context.Context, s logical.Storage) (*Co
 	// Verify this hasn't already changed
 	if b.globalConfig != nil {
 		return &Configuration{
-			CasRequired: b.globalConfig.CasRequired,
-			MaxVersions: b.globalConfig.MaxVersions,
+			CasRequired:        b.globalConfig.CasRequired,
+			MaxVersions:        b.globalConfig.MaxVersions,
+			DeleteVersionAfter: b.globalConfig.DeleteVersionAfter,
 		}, nil
 	}
 
@@ -421,6 +433,34 @@ func (b *versionedKVBackend) writeKeyMetadata(ctx context.Context, s logical.Sto
 	return nil
 }
 
+// kvEvent sends an event.
+//   - `path` contains the API path that was called.
+//   - `dataPath` contains the API path that should be called to fetch the underlying data, if relevant
+//   - `modified` is set to true if the cause of the event modified the data
+func kvEvent(ctx context.Context,
+	b *framework.Backend,
+	operation string,
+	path string,
+	dataPath string,
+	modified bool,
+	kvVersion int,
+	additionalMetadataPairs ...string) {
+
+	metadata := []string{
+		logical.EventMetadataModified, strconv.FormatBool(modified),
+		logical.EventMetadataOperation, operation,
+		"path", path,
+	}
+	if dataPath != "" {
+		metadata = append(metadata, logical.EventMetadataDataPath, dataPath)
+	}
+	metadata = append(metadata, additionalMetadataPairs...)
+	err := logical.SendEvent(ctx, b, fmt.Sprintf("kv-v%d/%s", kvVersion, operation), metadata...)
+	if err != nil && err != framework.ErrNoEvents {
+		b.Logger().Error("Error sending event", "error", err)
+	}
+}
+
 func ptypesTimestampToString(t *timestamp.Timestamp) string {
 	if t == nil {
 		return ""
@@ -451,7 +491,7 @@ you may or may not be able to access certain paths.
         Configures settings for the KV store
 
     ^data/.*$
-        Write, Read, and Delete data in the Key-Value Store.
+        Write, Read, and Delete data in the KV store.
 
     ^delete/.*$
         Marks one or more versions as deleted in the KV store.
@@ -464,4 +504,7 @@ you may or may not be able to access certain paths.
 
     ^undelete/.*$
         Undeletes one or more versions from the KV store.
+
+    ^subkeys/.*$
+        Read the subkeys within the data from the KV store without their associated values
 `
