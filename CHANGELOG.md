@@ -1,3 +1,25 @@
+## 0.9.0 -- unreleased
+
+SECURITY FIXES:
+
+ * Update the go dependencies to fix several security issues.
+
+IMPROVEMENTS:
+
+ * Better error message for the get command.
+ * Add a GitHub Workflows (as a replacement for semaphoreCI).
+
+CHANGES:
+
+ * Documentation updates.
+ * Update tests to the new Vault API.
+
+## 0.8.6 (Nov 27, 2021)
+
+SECURITY FIXES:
+
+ * Update the go dependencies to fix several security issues.
+
 ## 0.8.5 (May 5, 2020)
 
 BUG FIXES:
