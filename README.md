@@ -3,8 +3,6 @@
 [![Coverage](https://img.shields.io/badge/Go%20Coverage-67.1%25-green.svg?longCache=true&style=flat)](https://github.com/jpoles1/gopherbadger)
 [![Go Report Card](https://goreportcard.com/badge/github.com/madrisan/hashicorp-vault-monitor)](https://goreportcard.com/report/github.com/madrisan/hashicorp-vault-monitor)
 
-![SemaphoreCI](https://madrisan.semaphoreci.com/badges/hashicorp-vault-monitor.svg?style=shields)
-
 # Hashicorp Vault Monitor [![GoDoc](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor?status.png)](https://godoc.org/github.com/madrisan/hashicorp-vault-monitor)
 
 ![](images/HashiCorp-Vault-Monitor-logo.png?raw=true "HashiCorp Vault")
