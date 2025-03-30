@@ -19,6 +19,7 @@ package command
 import (
 	"flag"
 	"fmt"
+	"strings"
 )
 
 const (
@@ -140,7 +141,7 @@ func (c *GetCommand) Run(args []string) int {
 	if data, ok := secret.Data["data"]; ok && data != nil {
 		val := data.(map[string]interface{})[c.Field]
 		if val == nil {
-			out.Undefined("field '%s' not present in secret", c.Field)
+			out.Undefined("field '%s' not present in secret '%s'", c.Field, c.Path)
 			return StateUndefined
 		}
 		out.Output("found a value for the key %s: '%v'", c.Field, val)
@@ -150,6 +151,6 @@ func (c *GetCommand) Run(args []string) int {
 		return StateOk
 	}
 
-	out.Critical("field '%s' not present in secret", c.Field)
+	out.Critical("field '%s' not present in secret '%s': %s", c.Field, c.Path, strings.Join(secret.Warnings, " "))
 	return StateCritical
 }
