@@ -1,4 +1,4 @@
-## 0.9.0 -- unreleased
+## 0.9.0 -- (Mar 31, 2024)
 
 SECURITY FIXES:
 
