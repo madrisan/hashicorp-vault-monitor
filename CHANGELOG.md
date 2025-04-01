@@ -1,4 +1,13 @@
-## 0.9.0 -- (Mar 31, 2024)
+## 0.9.1 -- (Apr 1, 2025)
+
+SECURITY FIXES:
+
+ * jwt-go allows excessive memory allocation during header parsing
+   Affected verions: github.com/golang-jwt/jwt/v4 < 4.5.2
+   Fix: 4.5.2
+   See: https://cwe.mitre.org/data/definitions/405.html
+
+## 0.9.0 -- (Mar 31, 2025)
 
 SECURITY FIXES:
 
