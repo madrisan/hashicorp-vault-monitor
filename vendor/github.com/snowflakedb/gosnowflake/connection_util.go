@@ -1,5 +1,3 @@
-// Copyright (c) 2021-2022 Snowflake Computing Inc. All rights reserved.
-
 package gosnowflake
 
 import (
@@ -214,6 +212,15 @@ func isAsyncMode(ctx context.Context) bool {
 
 func isDescribeOnly(ctx context.Context) bool {
 	v := ctx.Value(describeOnly)
+	if v == nil {
+		return false
+	}
+	d, ok := v.(bool)
+	return ok && d
+}
+
+func isInternal(ctx context.Context) bool {
+	v := ctx.Value(internalQuery)
 	if v == nil {
 		return false
 	}

@@ -277,33 +277,34 @@ github.com/aliyun/alibaba-cloud-sdk-go/sdk/utils
 github.com/aliyun/alibaba-cloud-sdk-go/services/kms
 github.com/aliyun/alibaba-cloud-sdk-go/services/ram
 github.com/aliyun/alibaba-cloud-sdk-go/services/sts
-# github.com/apache/arrow/go/v16 v16.0.0
-## explicit; go 1.21
-github.com/apache/arrow/go/v16/arrow
-github.com/apache/arrow/go/v16/arrow/array
-github.com/apache/arrow/go/v16/arrow/arrio
-github.com/apache/arrow/go/v16/arrow/bitutil
-github.com/apache/arrow/go/v16/arrow/compute
-github.com/apache/arrow/go/v16/arrow/compute/exec
-github.com/apache/arrow/go/v16/arrow/compute/internal/kernels
-github.com/apache/arrow/go/v16/arrow/decimal128
-github.com/apache/arrow/go/v16/arrow/decimal256
-github.com/apache/arrow/go/v16/arrow/encoded
-github.com/apache/arrow/go/v16/arrow/endian
-github.com/apache/arrow/go/v16/arrow/float16
-github.com/apache/arrow/go/v16/arrow/internal
-github.com/apache/arrow/go/v16/arrow/internal/debug
-github.com/apache/arrow/go/v16/arrow/internal/dictutils
-github.com/apache/arrow/go/v16/arrow/internal/flatbuf
-github.com/apache/arrow/go/v16/arrow/ipc
-github.com/apache/arrow/go/v16/arrow/memory
-github.com/apache/arrow/go/v16/arrow/memory/internal/cgoalloc
-github.com/apache/arrow/go/v16/arrow/memory/mallocator
-github.com/apache/arrow/go/v16/arrow/scalar
-github.com/apache/arrow/go/v16/internal/bitutils
-github.com/apache/arrow/go/v16/internal/hashing
-github.com/apache/arrow/go/v16/internal/json
-github.com/apache/arrow/go/v16/internal/utils
+# github.com/apache/arrow-go/v18 v18.0.0
+## explicit; go 1.22.0
+github.com/apache/arrow-go/v18/arrow
+github.com/apache/arrow-go/v18/arrow/array
+github.com/apache/arrow-go/v18/arrow/arrio
+github.com/apache/arrow-go/v18/arrow/bitutil
+github.com/apache/arrow-go/v18/arrow/compute
+github.com/apache/arrow-go/v18/arrow/compute/exec
+github.com/apache/arrow-go/v18/arrow/compute/internal/kernels
+github.com/apache/arrow-go/v18/arrow/decimal
+github.com/apache/arrow-go/v18/arrow/decimal128
+github.com/apache/arrow-go/v18/arrow/decimal256
+github.com/apache/arrow-go/v18/arrow/encoded
+github.com/apache/arrow-go/v18/arrow/endian
+github.com/apache/arrow-go/v18/arrow/float16
+github.com/apache/arrow-go/v18/arrow/internal
+github.com/apache/arrow-go/v18/arrow/internal/debug
+github.com/apache/arrow-go/v18/arrow/internal/dictutils
+github.com/apache/arrow-go/v18/arrow/internal/flatbuf
+github.com/apache/arrow-go/v18/arrow/ipc
+github.com/apache/arrow-go/v18/arrow/memory
+github.com/apache/arrow-go/v18/arrow/memory/internal/cgoalloc
+github.com/apache/arrow-go/v18/arrow/memory/mallocator
+github.com/apache/arrow-go/v18/arrow/scalar
+github.com/apache/arrow-go/v18/internal/bitutils
+github.com/apache/arrow-go/v18/internal/hashing
+github.com/apache/arrow-go/v18/internal/json
+github.com/apache/arrow-go/v18/internal/utils
 # github.com/armon/go-metrics v0.4.1
 ## explicit; go 1.12
 github.com/armon/go-metrics
@@ -562,8 +563,8 @@ github.com/couchbase/goprotostellar/genproto/view_v1
 # github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20240607131231-fb385523de28
 ## explicit; go 1.13
 github.com/couchbaselabs/gocbconnstr/v2
-# github.com/danieljoos/wincred v1.1.2
-## explicit; go 1.13
+# github.com/danieljoos/wincred v1.2.2
+## explicit; go 1.18
 github.com/danieljoos/wincred
 # github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 ## explicit
@@ -751,8 +752,8 @@ github.com/go-sql-driver/mysql
 # github.com/go-test/deep v1.1.1
 ## explicit; go 1.16
 github.com/go-test/deep
-# github.com/goccy/go-json v0.10.2
-## explicit; go 1.12
+# github.com/goccy/go-json v0.10.4
+## explicit; go 1.19
 github.com/goccy/go-json
 github.com/goccy/go-json/internal/decoder
 github.com/goccy/go-json/internal/encoder
@@ -807,7 +808,7 @@ github.com/google/certificate-transparency-go/asn1
 github.com/google/certificate-transparency-go/tls
 github.com/google/certificate-transparency-go/x509
 github.com/google/certificate-transparency-go/x509/pkix
-# github.com/google/flatbuffers v24.3.25+incompatible
+# github.com/google/flatbuffers v24.12.23+incompatible
 ## explicit
 github.com/google/flatbuffers/go
 # github.com/google/gnostic-models v0.6.8
@@ -1518,8 +1519,8 @@ github.com/klauspost/compress/internal/cpuinfo
 github.com/klauspost/compress/internal/snapref
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/klauspost/cpuid/v2 v2.2.7
-## explicit; go 1.15
+# github.com/klauspost/cpuid/v2 v2.2.9
+## explicit; go 1.20
 github.com/klauspost/cpuid/v2
 # github.com/kylelemons/godebug v1.1.0
 ## explicit; go 1.11
@@ -1788,7 +1789,7 @@ github.com/petermattis/goid
 ## explicit
 github.com/pierrec/lz4
 github.com/pierrec/lz4/internal/xxh32
-# github.com/pierrec/lz4/v4 v4.1.21
+# github.com/pierrec/lz4/v4 v4.1.22
 ## explicit; go 1.14
 github.com/pierrec/lz4/v4
 github.com/pierrec/lz4/v4/internal/lz4block
@@ -1876,8 +1877,8 @@ github.com/shopspring/decimal
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/snowflakedb/gosnowflake v1.13.0
-## explicit; go 1.21
+# github.com/snowflakedb/gosnowflake v1.13.3
+## explicit; go 1.22.0
 github.com/snowflakedb/gosnowflake
 # github.com/softlayer/softlayer-go v0.0.0-20180806151055-260589d94c7d
 ## explicit
@@ -2125,8 +2126,8 @@ golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/agent
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
 golang.org/x/crypto/ssh/terminal
-# golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
-## explicit; go 1.20
+# golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
+## explicit; go 1.22.0
 golang.org/x/exp/constraints
 golang.org/x/exp/maps
 golang.org/x/exp/slices
@@ -2232,7 +2233,7 @@ golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9
+# golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da
 ## explicit; go 1.18
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
