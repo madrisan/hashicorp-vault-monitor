@@ -42,12 +42,16 @@ func (b *backend) pathConfig() []*framework.Path {
 					DisplayAttrs: &framework.DisplayAttributes{
 						OperationVerb: "configure",
 					},
+					ForwardPerformanceSecondary: true,
+					ForwardPerformanceStandby:   true,
 				},
 				logical.UpdateOperation: &framework.PathOperation{
 					Callback: b.configCreateUpdateOperation,
 					DisplayAttrs: &framework.DisplayAttributes{
 						OperationVerb: "configure",
 					},
+					ForwardPerformanceSecondary: true,
+					ForwardPerformanceStandby:   true,
 				},
 				logical.ReadOperation: &framework.PathOperation{
 					Callback: b.configReadOperation,
