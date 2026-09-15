@@ -1,5 +1,54 @@
 # Changes
 
+## [0.8.0](https://github.com/googleapis/google-cloud-go/releases/tag/longrunning%2Fv0.8.0) (2026-01-08)
+
+### Bug Fixes
+
+* upgrade gRPC service registration func An update to Go gRPC Protobuf generation will change service registration function signatures to use an interface instead of a concrete type in generated .pb.go service files. This change should affect very few client library users. See release notes advisories in https://github.com/googleapis/google-cloud-go/pull/11025. ([185951b](https://github.com/googleapis/google-cloud-go/commit/185951b3bea9fb942979e81ce248ccdebb40d94b))
+
+## [0.7.0](https://github.com/googleapis/google-cloud-go/releases/tag/longrunning%2Fv0.7.0) (2025-10-14)
+
+### Features
+
+* add ListOperations partial success flag
+* add ListOperations unreachable resources
+
+## [0.6.7](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.6.6...longrunning/v0.6.7) (2025-04-15)
+
+
+### Bug Fixes
+
+* **longrunning:** Update google.golang.org/api to 0.229.0 ([3319672](https://github.com/googleapis/google-cloud-go/commit/3319672f3dba84a7150772ccb5433e02dab7e201))
+
+## [0.6.6](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.6.5...longrunning/v0.6.6) (2025-03-13)
+
+
+### Bug Fixes
+
+* **longrunning:** Update golang.org/x/net to 0.37.0 ([1144978](https://github.com/googleapis/google-cloud-go/commit/11449782c7fb4896bf8b8b9cde8e7441c84fb2fd))
+
+## [0.6.5](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.6.4...longrunning/v0.6.5) (2025-03-06)
+
+
+### Bug Fixes
+
+* **longrunning:** Fix out-of-sync version.go ([28f0030](https://github.com/googleapis/google-cloud-go/commit/28f00304ebb13abfd0da2f45b9b79de093cca1ec))
+
+## [0.6.4](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.6.3...longrunning/v0.6.4) (2025-01-02)
+
+
+### Bug Fixes
+
+* **longrunning:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+
+## [0.6.3](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.6.2...longrunning/v0.6.3) (2024-11-19)
+
+
+### Documentation
+
+* **longrunning:** Clarity and typo fixes for documentation ([c1e936d](https://github.com/googleapis/google-cloud-go/commit/c1e936df6527933f5e7c31be0f95aa46ff2c0e61))
+* **longrunning:** Fix example rpc naming ([c1e936d](https://github.com/googleapis/google-cloud-go/commit/c1e936df6527933f5e7c31be0f95aa46ff2c0e61))
+
 ## [0.6.2](https://github.com/googleapis/google-cloud-go/compare/longrunning/v0.6.1...longrunning/v0.6.2) (2024-10-23)
 
 
@@ -144,3 +193,4 @@
 ## v0.1.0
 
 Initial release.
+
