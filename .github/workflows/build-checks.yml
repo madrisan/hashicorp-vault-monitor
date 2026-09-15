@@ -13,11 +13,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up Go 1.23
-        uses: actions/setup-go@v1
+      - name: Set up Go 1.26
+        uses: actions/setup-go@v5
         with:
-          go-version: 1.23
-          timeout: 5m
+          go-version: "1.26"
 
       # step 2: checkout repository code
       - name: Checkout code into workspace directory
@@ -41,7 +40,7 @@ jobs:
 
       # step 5: trivy scan
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           ignore-unfixed: true

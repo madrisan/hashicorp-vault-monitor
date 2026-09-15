@@ -19,7 +19,9 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"testing"
 
+	"golang.org/x/telemetry/counter"
 	"golang.org/x/tools/internal/gocommand"
 	"golang.org/x/tools/internal/imports"
 )
@@ -198,13 +200,19 @@ func walkDir(path string) {
 }
 
 func main() {
+	// Measure how many people still use goimports.
+	// (See https://go.dev/issue/78671 for one.)
+	counter.Open()
+	counter.Inc("tools/cmd:goimports")
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	// call gofmtMain in a separate function
 	// so that it can use defer and have them
 	// run before the exit.
 	gofmtMain()
-	os.Exit(exitCode)
+	if !testing.Testing() {
+		os.Exit(exitCode)
+	}
 }
 
 // parseFlags parses command line flags and returns the paths to process.
@@ -361,8 +369,8 @@ func replaceTempFilename(diff []byte, filename string) ([]byte, error) {
 	}
 	// Always print filepath with slash separator.
 	f := filepath.ToSlash(filename)
-	bs[0] = []byte(fmt.Sprintf("--- %s%s", f+".orig", t0))
-	bs[1] = []byte(fmt.Sprintf("+++ %s%s", f, t1))
+	bs[0] = fmt.Appendf(nil, "--- %s%s", f+".orig", t0)
+	bs[1] = fmt.Appendf(nil, "+++ %s%s", f, t1)
 	return bytes.Join(bs, []byte{'\n'}), nil
 }
 
