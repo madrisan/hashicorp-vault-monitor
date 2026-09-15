@@ -1,3 +1,38 @@
+## 0.9.2 -- (Sep 15, 2026)
+
+SECURITY FIXES:
+
+ * golang.org/x/text: infinite loop on invalid input
+   Affected versions: golang.org/x/text < 0.39.0
+   Fix: 0.41.0
+   See: https://pkg.go.dev/vuln/GO-2026-5970
+
+ * golang.org/x/net: idna package fails to reject ASCII-only Punycode-encoded
+   labels
+   Affected versions: golang.org/x/net < 0.55.0
+   Fix: 0.57.0
+   See: https://pkg.go.dev/vuln/GO-2026-5026
+
+ * golang.org/x/net: infinite loop in the HTTP/2 transport on a bad
+   SETTINGS_MAX_FRAME_SIZE
+   Affected versions: golang.org/x/net < 0.53.0
+   Fix: 0.57.0
+   See: https://pkg.go.dev/vuln/GO-2026-4918
+
+ * go-jose/go-jose/v4: panics during JWE decryption
+   Affected versions: github.com/go-jose/go-jose/v4 < 4.1.4
+   Fix: 4.1.4
+   See: https://pkg.go.dev/vuln/GO-2026-4945
+
+ * Update golang.org/x/crypto and golang.org/x/sys to their latest patched
+   releases, addressing several further advisories reported against
+   modules required by the project.
+
+IMPROVEMENTS:
+
+ * Bump the Go toolchain to 1.26 (required by the dependency updates above)
+   and the `golangci-lint` version used by `make lint`/CI accordingly.
+
 ## 0.9.1 -- (Apr 2, 2025)
 
 SECURITY FIXES:
