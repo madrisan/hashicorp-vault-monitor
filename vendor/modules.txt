@@ -168,9 +168,10 @@ github.com/Azure/go-autorest/logger
 # github.com/Azure/go-autorest/tracing v0.6.0
 ## explicit; go 1.12
 github.com/Azure/go-autorest/tracing
-# github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358
-## explicit
+# github.com/Azure/go-ntlmssp v0.1.1
+## explicit; go 1.24
 github.com/Azure/go-ntlmssp
+github.com/Azure/go-ntlmssp/internal/md4
 # github.com/AzureAD/microsoft-authentication-library-for-go v1.3.3
 ## explicit; go 1.18
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache
