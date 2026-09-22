@@ -92,6 +92,8 @@ func pathConfig(b *azureAuthBackend) *framework.Path {
 					OperationVerb:   "configure",
 					OperationSuffix: "auth",
 				},
+				ForwardPerformanceSecondary: true,
+				ForwardPerformanceStandby:   true,
 			},
 			logical.UpdateOperation: &framework.PathOperation{
 				Callback: b.pathConfigWrite,
@@ -99,6 +101,8 @@ func pathConfig(b *azureAuthBackend) *framework.Path {
 					OperationVerb:   "configure",
 					OperationSuffix: "auth",
 				},
+				ForwardPerformanceSecondary: true,
+				ForwardPerformanceStandby:   true,
 			},
 			logical.DeleteOperation: &framework.PathOperation{
 				Callback: b.pathConfigDelete,

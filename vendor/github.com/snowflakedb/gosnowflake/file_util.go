@@ -1,5 +1,3 @@
-// Copyright (c) 2021-2022 Snowflake Computing Inc. All rights reserved.
-
 package gosnowflake
 
 import (
@@ -131,6 +129,7 @@ type fileMetadata struct {
 	resStatus          resultStatus
 	stageInfo          *execResponseStageInfo
 	encryptionMaterial *snowflakeFileEncryption
+	encryptMeta        *encryptMetadata
 
 	srcFileName        string
 	realSrcFileName    string

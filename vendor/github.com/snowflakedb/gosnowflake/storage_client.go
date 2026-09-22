@@ -1,9 +1,6 @@
-// Copyright (c) 2021-2022 Snowflake Computing Inc. All rights reserved.
-
 package gosnowflake
 
 import (
-	"bytes"
 	"fmt"
 	"math"
 	"os"
@@ -28,7 +25,7 @@ type storageUtil interface {
 type cloudUtil interface {
 	createClient(*execResponseStageInfo, bool) (cloudClient, error)
 	getFileHeader(*fileMetadata, string) (*fileHeader, error)
-	uploadFile(string, *fileMetadata, *encryptMetadata, int, int64) error
+	uploadFile(string, *fileMetadata, int, int64) error
 	nativeDownloadFile(*fileMetadata, string, int64) error
 }
 
@@ -62,32 +59,6 @@ func (rsu *remoteStorageUtil) createClient(info *execResponseStageInfo, useAccel
 }
 
 func (rsu *remoteStorageUtil) uploadOneFile(meta *fileMetadata) error {
-	var encryptMeta *encryptMetadata
-	var dataFile string
-	var err error
-	if meta.encryptionMaterial != nil {
-		if meta.srcStream != nil {
-			var encryptedStream bytes.Buffer
-			srcStream := meta.srcStream
-			if meta.realSrcStream != nil {
-				srcStream = meta.realSrcStream
-			}
-			encryptMeta, err = encryptStreamCBC(meta.encryptionMaterial, srcStream, &encryptedStream, 0)
-			if err != nil {
-				return err
-			}
-			meta.realSrcStream = &encryptedStream
-			dataFile = meta.realSrcFileName
-		} else {
-			encryptMeta, dataFile, err = encryptFileCBC(meta.encryptionMaterial, meta.realSrcFileName, 0, meta.tmpDir)
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		dataFile = meta.realSrcFileName
-	}
-
 	utilClass := rsu.getNativeCloudType(meta.stageInfo.LocationType, meta.sfa.sc.cfg)
 	maxConcurrency := int(meta.parallel)
 	var lastErr error
@@ -96,9 +67,9 @@ func (rsu *remoteStorageUtil) uploadOneFile(meta *fileMetadata) error {
 		if !meta.overwrite {
 			header, err := utilClass.getFileHeader(meta, meta.dstFileName)
 			if meta.resStatus == notFoundFile {
-				err := utilClass.uploadFile(dataFile, meta, encryptMeta, maxConcurrency, meta.options.MultiPartThreshold)
+				err := utilClass.uploadFile(meta.realSrcFileName, meta, maxConcurrency, meta.options.MultiPartThreshold)
 				if err != nil {
-					logger.Warnf("Error uploading %v. err: %v", dataFile, err)
+					logger.Warnf("Error uploading %v. err: %v", meta.realSrcFileName, err)
 				}
 			} else if err != nil {
 				return err
@@ -110,9 +81,9 @@ func (rsu *remoteStorageUtil) uploadOneFile(meta *fileMetadata) error {
 			}
 		}
 		if meta.overwrite || meta.resStatus == notFoundFile {
-			err := utilClass.uploadFile(dataFile, meta, encryptMeta, maxConcurrency, meta.options.MultiPartThreshold)
+			err := utilClass.uploadFile(meta.realSrcFileName, meta, maxConcurrency, meta.options.MultiPartThreshold)
 			if err != nil {
-				logger.Debugf("Error uploading %v. err: %v", dataFile, err)
+				logger.Debugf("Error uploading %v. err: %v", meta.realSrcFileName, err)
 			}
 		}
 		if meta.resStatus == uploaded || meta.resStatus == renewToken || meta.resStatus == renewPresignedURL {
@@ -137,7 +108,7 @@ func (rsu *remoteStorageUtil) uploadOneFile(meta *fileMetadata) error {
 	if lastErr != nil {
 		return lastErr
 	}
-	return fmt.Errorf("unkown error uploading %v", dataFile)
+	return fmt.Errorf("unkown error uploading %v", meta.realSrcFileName)
 }
 
 func (rsu *remoteStorageUtil) uploadOneFileWithRetry(meta *fileMetadata) error {

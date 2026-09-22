@@ -1,5 +1,3 @@
-// Copyright (c) 2017-2022 Snowflake Computing Inc. All rights reserved.
-
 package gosnowflake
 
 import (
@@ -20,14 +18,6 @@ const (
 
 	headerContentTypeApplicationJSON     = "application/json"
 	headerAcceptTypeApplicationSnowflake = "application/snowflake"
-)
-
-// Snowflake Server Error code
-const (
-	queryInProgressCode      = "333333"
-	queryInProgressAsyncCode = "333334"
-	sessionExpiredCode       = "390112"
-	queryNotExecuting        = "000605"
 )
 
 // Snowflake Server Endpoints
@@ -483,7 +473,7 @@ func cancelQuery(ctx context.Context, sr *snowflakeRestful, requestID UUID, time
 				return err
 			}
 			return sr.FuncCancelQuery(ctx, sr, requestID, timeout)
-		} else if !respd.Success && respd.Code == queryNotExecuting && ctxRetry != 0 {
+		} else if !respd.Success && respd.Code == queryNotExecutingCode && ctxRetry != 0 {
 			return sr.FuncCancelQuery(context.WithValue(ctx, cancelRetry, ctxRetry-1), sr, requestID, timeout)
 		} else if respd.Success {
 			return nil

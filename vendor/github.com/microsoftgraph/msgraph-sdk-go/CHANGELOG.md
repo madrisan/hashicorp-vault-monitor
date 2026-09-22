@@ -2,6 +2,78 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.69.0](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.68.0...v1.69.0) (2025-04-15)
+
+
+### Features
+
+* **generation:** update request builders and models ([#869](https://github.com/microsoftgraph/msgraph-sdk-go/issues/869)) ([e7d4e94](https://github.com/microsoftgraph/msgraph-sdk-go/commit/e7d4e944cc87c25af492e622a0ca1909e9dc0ef3))
+
+## [1.68.0](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.67.1...v1.68.0) (2025-04-09)
+
+
+### Features
+
+* **generation:** update request builders and models ([1d7d7f2](https://github.com/microsoftgraph/msgraph-sdk-go/commit/1d7d7f287f08d6f2ae3b3dcb98bd3a4250686240))
+
+## [1.67.1](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.67.0...v1.67.1) (2025-04-02)
+
+
+### Bug Fixes
+
+* removes common go dependency ([7d29bd5](https://github.com/microsoftgraph/msgraph-sdk-go/commit/7d29bd5db4d24c6916b844686a233051c288ff1c))
+* removes common go dependency ([3b64bb5](https://github.com/microsoftgraph/msgraph-sdk-go/commit/3b64bb5fa363b51c0b1fdfa1ac64987bcd2d6b14))
+
+## [1.67.0](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.66.1...v1.67.0) (2025-03-25)
+
+
+### Features
+
+* **generation:** update request builders and models ([f0c7f26](https://github.com/microsoftgraph/msgraph-sdk-go/commit/f0c7f2607576d8fc7f2170d0f829f36af6e2a138))
+
+## [1.66.1](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.66.0...v1.66.1) (2025-03-24)
+
+
+### Bug Fixes
+
+* upgrades common go dependency to solve triming issues ([c757cb9](https://github.com/microsoftgraph/msgraph-sdk-go/commit/c757cb918b10f80f2c34fd72f5b28a811c4f552e))
+* upgrades common go dependency to solve triming issues ([20f8454](https://github.com/microsoftgraph/msgraph-sdk-go/commit/20f84541de9fc04b648f7f8a714fa56670d8275f))
+
+## [1.66.0](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.65.0...v1.66.0) (2025-03-18)
+
+
+### Features
+
+* **generation:** update request builders and models ([#850](https://github.com/microsoftgraph/msgraph-sdk-go/issues/850)) ([7e1657a](https://github.com/microsoftgraph/msgraph-sdk-go/commit/7e1657a5d07f9643cc6c4be1c969ba6b201fa4ef))
+
+## [1.65.0](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.64.0...v1.65.0) (2025-03-14)
+
+
+### Features
+
+* upgrade to go 1.24 ([#848](https://github.com/microsoftgraph/msgraph-sdk-go/issues/848)) ([b677920](https://github.com/microsoftgraph/msgraph-sdk-go/commit/b67792055f83bb3597651ed9df4a086881b0cea2))
+
+## [1.64.0](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.63.0...v1.64.0) (2025-03-12)
+
+
+### Features
+
+* **generation:** update request builders and models ([79947dc](https://github.com/microsoftgraph/msgraph-sdk-go/commit/79947dc7191ffaeba508d4715fb5e90908d48cb0))
+
+## [1.63.0](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.62.0...v1.63.0) (2025-03-05)
+
+
+### Features
+
+* **generation:** update request builders and models ([9f67923](https://github.com/microsoftgraph/msgraph-sdk-go/commit/9f679235c337da0c38de62a8701f8e87f30aef03))
+
+## [1.62.0](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.61.0...v1.62.0) (2025-02-25)
+
+
+### Features
+
+* **generation:** update request builders and models ([8ba0352](https://github.com/microsoftgraph/msgraph-sdk-go/commit/8ba035229745807ee276ad2144d7a92fb236c57b))
+
 ## [1.61.0](https://github.com/microsoftgraph/msgraph-sdk-go/compare/v1.60.0...v1.61.0) (2025-02-13)
 
 

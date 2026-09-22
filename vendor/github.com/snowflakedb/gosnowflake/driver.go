@@ -1,5 +1,3 @@
-// Copyright (c) 2017-2022 Snowflake Computing Inc. All rights reserved.
-
 package gosnowflake
 
 import (
@@ -46,6 +44,9 @@ func (d SnowflakeDriver) OpenConnector(dsn string) (driver.Connector, error) {
 func (d SnowflakeDriver) OpenWithConfig(ctx context.Context, config Config) (driver.Conn, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
+	}
+	if config.Params == nil {
+		config.Params = make(map[string]*string)
 	}
 	if config.Tracing != "" {
 		if err := logger.SetLogLevel(config.Tracing); err != nil {
