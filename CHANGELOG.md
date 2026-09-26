@@ -1,3 +1,93 @@
+## 0.9.3 -- (Sep 26, 2026)
+
+SECURITY FIXES:
+
+ * hashicorp/vault: multiple vulnerabilities, including a critical one
+   Affected versions: github.com/hashicorp/vault >= 0.3.0 < 1.19.3
+   Fix: 1.19.5
+   See: https://nvd.nist.gov/vuln/detail/CVE-2025-6000 (critical),
+        CVE-2025-5999, CVE-2025-6203, CVE-2025-11621, CVE-2025-4656,
+        and 8 further advisories reported against this range
+
+ * grpc-go: multiple vulnerabilities, including a critical one
+   Affected versions: google.golang.org/grpc < 1.79.3
+   Fix: 1.79.3
+   See: https://nvd.nist.gov/vuln/detail/CVE-2026-33186 (critical),
+        GHSA-hrxh-6v49-42gf, CVE-2026-84304, CVE-2026-84445, CVE-2026-84303
+
+ * dvsekhvalnov/jose2go: vulnerability in JWE/JWS handling
+   Affected versions: github.com/dvsekhvalnov/jose2go < 1.7.0
+   Fix: 1.7.0
+   See: https://nvd.nist.gov/vuln/detail/CVE-2025-63811
+
+ * go-jose/go-jose/v3: vulnerability in JOSE handling
+   Affected versions: github.com/go-jose/go-jose/v3 < 3.0.5
+   Fix: 3.0.5
+   See: https://nvd.nist.gov/vuln/detail/CVE-2026-34986
+
+ * microsoft/kiota-http-go: vulnerability in the HTTP request adapter
+   Affected versions: github.com/microsoft/kiota-http-go < 1.5.5
+   Fix: 1.5.5
+   See: https://nvd.nist.gov/vuln/detail/CVE-2026-44503
+
+ * mongo-driver: vulnerability in the MongoDB Go driver
+   Affected versions: go.mongodb.org/mongo-driver < 1.17.7
+   Fix: 1.17.7
+   See: https://nvd.nist.gov/vuln/detail/CVE-2026-2303
+
+ * Azure/go-ntlmssp: vulnerability in NTLM authentication handling
+   Affected versions: github.com/Azure/go-ntlmssp < 0.1.1
+   Fix: 0.1.1
+   See: https://nvd.nist.gov/vuln/detail/CVE-2026-32952
+
+ * snowflakedb/gosnowflake: low-severity vulnerability
+   Affected versions: github.com/snowflakedb/gosnowflake >= 1.7.0 < 1.13.3
+   Fix: 1.14.0
+   See: https://nvd.nist.gov/vuln/detail/CVE-2025-46327
+
+ * cloudflare/circl: low-severity vulnerabilities
+   Affected versions: github.com/cloudflare/circl < 1.6.1
+   Fix: 1.6.1
+   See: https://nvd.nist.gov/vuln/detail/CVE-2025-8556,
+        CVE-2026-1229
+
+ * moby/moby (docker/docker): low-severity vulnerability
+   Affected versions: github.com/docker/docker >= 26.0.0-rc1 < 28.0.0
+   Fix: 28.0.0
+   See: https://nvd.nist.gov/vuln/detail/CVE-2025-54410
+
+ * filippo.io/edwards25519: low-severity vulnerability
+   Affected versions: filippo.io/edwards25519 < 1.1.1
+   Fix: 1.1.1
+   See: https://nvd.nist.gov/vuln/detail/CVE-2026-26958
+
+ * aws-sdk-go-v2 (service/s3 and aws/protocol/eventstream): moderate-severity
+   vulnerability
+   Affected versions: github.com/aws/aws-sdk-go-v2/service/s3 < 1.97.3,
+     github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream < 1.7.8
+   Fix: 1.97.3 and 1.7.8 respectively
+   See: https://github.com/advisories/GHSA-xmrv-pmrh-hhx2
+
+ * gorilla/websocket: moderate-severity vulnerability
+   Affected versions: github.com/gorilla/websocket < 1.5.3
+   Fix: 1.5.3
+   See: https://github.com/advisories/GHSA-w67g-5rqw-f597
+
+KNOWN ISSUES:
+
+ * github.com/jackc/pgproto3/v2 and github.com/jackc/pgx/v4 are still
+   flagged by GitHub's dependency scan, but neither has a fixed release in
+   its major version line (v2.3.3 and v4.18.3 respectively are already the
+   latest); the fix requires migrating to pgx/v5. `govulncheck` confirms
+   neither is reachable from this project's own code.
+
+IMPROVEMENTS:
+
+ * Drop a 50+ MB kiota codegen reference file
+   (`vendor/github.com/microsoftgraph/msgraph-sdk-go/kiota-dom-export.txt`)
+   that isn't needed to build or test, and was tripping GitHub's large-file
+   push warning.
+
 ## 0.9.2 -- (Sep 15, 2026)
 
 SECURITY FIXES:
