@@ -75,6 +75,7 @@ const (
 	mountTypeSystem      = "system"
 	mountTypeNSSystem    = "ns_system"
 	mountTypeIdentity    = "identity"
+	mountTypeNSIdentity  = "ns_identity"
 	mountTypeCubbyhole   = "cubbyhole"
 	mountTypePlugin      = "plugin"
 	mountTypeKV          = "kv"
@@ -1716,7 +1717,7 @@ func (c *Core) newLogicalBackend(ctx context.Context, entry *MountEntry, sysView
 			factory = wrapFactoryCheckPerms(c, factory)
 		}
 
-		entSetExternalPluginConfig(plug, conf)
+		setExternalPluginConfig(plug, conf)
 	}
 
 	// Set up conf to pass in plugin_name

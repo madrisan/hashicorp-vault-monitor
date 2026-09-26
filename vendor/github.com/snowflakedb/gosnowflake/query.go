@@ -1,5 +1,3 @@
-// Copyright (c) 2017-2022 Snowflake Computing Inc. All rights reserved.
-
 package gosnowflake
 
 import (
@@ -110,6 +108,7 @@ type execResponseStageInfo struct {
 	EndPoint              string                  `json:"endPoint,omitempty"`
 	UseS3RegionalURL      bool                    `json:"useS3RegionalUrl,omitempty"`
 	UseRegionalURL        bool                    `json:"useRegionalUrl,omitempty"`
+	UseVirtualURL         bool                    `json:"useVirtualUrl,omitempty"`
 }
 
 // make all data field optional

@@ -1,5 +1,3 @@
-// Copyright (c) 2020-2022 Snowflake Computing Inc. All rights reserved.
-
 package gosnowflake
 
 import (
@@ -8,9 +6,9 @@ import (
 	"encoding/base64"
 	"time"
 
-	"github.com/apache/arrow/go/v16/arrow"
-	"github.com/apache/arrow/go/v16/arrow/ipc"
-	"github.com/apache/arrow/go/v16/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/ipc"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
 type arrowResultChunk struct {

@@ -1,3 +1,38 @@
+## Unreleased
+
+## v0.20.4
+### May 7, 2025
+
+BUG FIXES:
+* Fix validation of token claims for Uniform VMSS (https://github.com/hashicorp/vault-plugin-auth-azure/pull/203).
+
+IMPROVEMENTS:
+* Updated dependencies:
+   * `github.com/Azure/azure-sdk-for-go/sdk/azcore` v1.17.0 -> v1.18.0
+   * `github.com/Azure/azure-sdk-for-go/sdk/azidentity` v1.8.2 -> v1.9.0
+   * `github.com/coreos/go-oidc/v3` v3.11.0 -> v3.14.1
+   * `github.com/microsoftgraph/msgraph-sdk-go` v1.53.0 -> v1.69.0
+   * `github.com/microsoftgraph/msgraph-sdk-go-core` v1.2.1 -> v1.3.2
+   * `golang.org/x/oauth2` v0.28.0 -> v0.29.0
+
+## v0.20.3
+### March 27, 2025
+
+BUG FIXES:
+* Fix a panic when a performance standby node attempts to write/update config (https://github.com/hashicorp/vault-plugin-auth-azure/pull/198)
+
+## v0.20.2
+### March 25, 2025
+
+IMPROVEMENTS:
+* Require `resource_group_name`, `vm_name`, and `vmss_name` to match token claims on login (https://github.com/hashicorp/vault-plugin-auth-azure/pull/186)
+* Update dependencies:
+  * `github.com/Azure/azure-sdk-for-go/sdk/azcore` v1.14.0 -> v1.17.0
+  * `github.com/Azure/azure-sdk-for-go/sdk/azidentity` v1.7.0 -> v1.8.2
+  * `github.com/hashicorp/vault/api` v1.15.0 -> v1.16.0
+  * `golang.org/x/oauth2` v0.27.0 -> v0.28.0
+* Upgrade to Go 1.23.6
+
 ## v0.20.1
 ### February 26, 2025
 

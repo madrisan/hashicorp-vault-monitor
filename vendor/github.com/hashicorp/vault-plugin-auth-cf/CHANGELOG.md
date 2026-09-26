@@ -1,5 +1,15 @@
 ## Unreleased
 
+## v0.20.1 (May 12, 2025)
+
+IMPROVEMENTS:
+
+* Bump golang.org/x/net from 0.34.0 to 0.38.0
+
+BUGS:
+
+* Fix a bug where the `cf_timeout` user-provided value was always ignored [GH-104](https://github.com/hashicorp/vault-plugin-auth-cf/pull/104)
+
 ## v0.20.0 (February 7, 2025)
 
 IMPROVEMENTS:
@@ -13,6 +23,12 @@ IMPROVEMENTS:
    * `github.com/stretchr/testify` v1.9.0 -> v1.10.0
    * `golang.org/x/crypto` v0.31.0 -> v0.32.0
    * `golang.org/x/net` v0.33.0 -> v0.34.0
+
+## v0.19.2 (May 12, 2025)
+
+BUGS:
+
+* Fix a bug where the `cf_timeout` user-provided value was always ignored [GH-104](https://github.com/hashicorp/vault-plugin-auth-cf/pull/104)
 
 ## v0.19.1 (January 6, 2025)
 
@@ -33,6 +49,11 @@ Dependency Updates:
 * `golang.org/x/crypto` v0.23.0 -> v0.26.0
 * `golang.org/x/net` v0.25.0 -> v0.28.0
 
+## v0.18.2 (May 12, 2025)
+
+BUGS:
+
+* Fix a bug where the `cf_timeout` user-provided value was always ignored [GH-104](https://github.com/hashicorp/vault-plugin-auth-cf/pull/104)
 
 ## v0.18.1 (January 6, 2025)
 

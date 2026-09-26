@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/cloudfoundry-community/go-cfclient"
 	"github.com/hashicorp/go-cleanhttp"
@@ -141,7 +140,7 @@ func (b *backend) newCFClient(_ context.Context, config *models.Configuration) (
 	}
 
 	httpClient := cleanhttp.DefaultClient()
-	httpClient.Timeout = config.CFTimeout * time.Second
+	httpClient.Timeout = config.CFTimeout
 
 	clientConf := &cfclient.Config{
 		ApiAddress:   config.CFAPIAddr,
@@ -174,7 +173,6 @@ func (b *backend) newCFClient(_ context.Context, config *models.Configuration) (
 			[]byte(config.CFMutualTLSCertificate),
 			[]byte(config.CFMutualTLSKey),
 		)
-
 		if err != nil {
 			return nil, fmt.Errorf("could not parse X509 key pair for mutual TLS")
 		}

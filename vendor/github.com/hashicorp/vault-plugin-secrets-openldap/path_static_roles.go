@@ -390,6 +390,14 @@ func (b *backend) pathStaticRoleCreateUpdate(ctx context.Context, req *logical.R
 			}
 		}
 	case logical.UpdateOperation:
+		// if lastVaultRotation is zero, the role had `skip_import_rotation` set
+		if lastVaultRotation.IsZero() {
+			lastVaultRotation = time.Now()
+		}
+
+		// Ensure that NextVaultRotation is recalculated in case the rotation period changed
+		role.StaticAccount.SetNextVaultRotation(lastVaultRotation)
+
 		// store updated Role
 		entry, err := logical.StorageEntryJSON(staticRolePath+name, role)
 		if err != nil {
@@ -408,8 +416,7 @@ func (b *backend) pathStaticRoleCreateUpdate(ctx context.Context, req *logical.R
 			return nil, err
 		}
 	}
-
-	item.Priority = lastVaultRotation.Add(role.StaticAccount.RotationPeriod).Unix()
+	item.Priority = role.StaticAccount.NextVaultRotation.Unix()
 
 	// Add their rotation to the queue
 	if err := b.pushItem(item); err != nil {

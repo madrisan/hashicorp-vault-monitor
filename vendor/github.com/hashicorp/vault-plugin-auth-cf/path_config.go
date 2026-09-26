@@ -270,6 +270,12 @@ func (b *backend) operationConfigWrite(ctx context.Context, req *logical.Request
 			loginMaxSecNotAfter = time.Duration(raw.(int)) * time.Second
 		}
 
+		// Default to 0 seconds/no timeout
+		cfTimeout := 0 * time.Second
+		if raw, ok := data.GetOk("cf_timeout"); ok {
+			cfTimeout = time.Duration(raw.(int)) * time.Second
+		}
+
 		config = &models.Configuration{
 			Version:                1,
 			IdentityCACertificates: identityCACerts,
@@ -283,6 +289,7 @@ func (b *backend) operationConfigWrite(ctx context.Context, req *logical.Request
 			CFClientSecret:         cfClientSecret,
 			LoginMaxSecNotBefore:   loginMaxSecNotBefore,
 			LoginMaxSecNotAfter:    loginMaxSecNotAfter,
+			CFTimeout:              cfTimeout,
 		}
 	} else {
 		// They're updating a config. Only update the fields that have been sent in the call.
@@ -320,6 +327,9 @@ func (b *backend) operationConfigWrite(ctx context.Context, req *logical.Request
 		}
 		if raw, ok := data.GetOk("cf_client_secret"); ok {
 			config.CFClientSecret = raw.(string)
+		}
+		if raw, ok := data.GetOk("cf_timeout"); ok {
+			config.CFTimeout = time.Duration(raw.(int)) * time.Second
 		}
 	}
 
@@ -361,6 +371,7 @@ func (b *backend) operationConfigRead(ctx context.Context, req *logical.Request,
 			"cf_api_mutual_tls_certificate": config.CFMutualTLSCertificate,
 			"cf_api_addr":                   config.CFAPIAddr,
 			"cf_username":                   config.CFUsername,
+			"cf_timeout":                    config.CFTimeout.Seconds(),
 			"cf_client_id":                  config.CFClientID,
 			"login_max_seconds_not_before":  config.LoginMaxSecNotBefore / time.Second,
 			"login_max_seconds_not_after":   config.LoginMaxSecNotAfter / time.Second,

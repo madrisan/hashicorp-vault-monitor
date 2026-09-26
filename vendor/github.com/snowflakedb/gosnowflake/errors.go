@@ -1,5 +1,3 @@
-// Copyright (c) 2017-2022 Snowflake Computing Inc. All rights reserved.
-
 package gosnowflake
 
 import (
@@ -98,18 +96,29 @@ func populateErrorFields(code int, data *execResponse) *SnowflakeError {
 	return err
 }
 
+// Snowflake Server Error code
+const (
+	queryNotExecutingCode       = "000605"
+	queryInProgressCode         = "333333"
+	queryInProgressAsyncCode    = "333334"
+	sessionExpiredCode          = "390112"
+	invalidOAuthAccessTokenCode = "390303"
+	expiredOAuthAccessTokenCode = "390318"
+)
+
+// Driver return errors
 const (
 	/* connection */
 
-	// ErrCodeEmptyAccountCode is an error code for the case where a DNS doesn't include account parameter
+	// ErrCodeEmptyAccountCode is an error code for the case where a DSN doesn't include account parameter
 	ErrCodeEmptyAccountCode = 260000
-	// ErrCodeEmptyUsernameCode is an error code for the case where a DNS doesn't include user parameter
+	// ErrCodeEmptyUsernameCode is an error code for the case where a DSN doesn't include user parameter
 	ErrCodeEmptyUsernameCode = 260001
-	// ErrCodeEmptyPasswordCode is an error code for the case where a DNS doesn't include password parameter
+	// ErrCodeEmptyPasswordCode is an error code for the case where a DSN doesn't include password parameter
 	ErrCodeEmptyPasswordCode = 260002
-	// ErrCodeFailedToParseHost is an error code for the case where a DNS includes an invalid host name
+	// ErrCodeFailedToParseHost is an error code for the case where a DSN includes an invalid host name
 	ErrCodeFailedToParseHost = 260003
-	// ErrCodeFailedToParsePort is an error code for the case where a DNS includes an invalid port number
+	// ErrCodeFailedToParsePort is an error code for the case where a DSN includes an invalid port number
 	ErrCodeFailedToParsePort = 260004
 	// ErrCodeIdpConnectionError is an error code for the case where a IDP connection failed
 	ErrCodeIdpConnectionError = 260005
@@ -131,8 +140,14 @@ const (
 	ErrCodeTomlFileParsingFailed = 260013
 	// ErrCodeFailedToFindDSNInToml is an error code for the case where the DSN does not exist in the toml file.
 	ErrCodeFailedToFindDSNInToml = 260014
-	// ErrCodeInvalidFilePermission is an error code for the case where the user does not have 0600 permission to the toml file .
+	// ErrCodeInvalidFilePermission is an error code for the case where the user does not have 0600 permission to the toml file.
 	ErrCodeInvalidFilePermission = 260015
+	// ErrCodeEmptyPasswordAndToken is an error code for the case where a DSN do includes neither password nor token
+	ErrCodeEmptyPasswordAndToken = 260016
+	// ErrCodeEmptyOAuthParameters is an error code for the case where the client ID or client secret are not provided for OAuth flows.
+	ErrCodeEmptyOAuthParameters = 260017
+	// ErrMissingAccessATokenButRefreshTokenPresent is an error code for the case when access token is not found in cache, but the refresh token is present.
+	ErrMissingAccessATokenButRefreshTokenPresent = 260018
 
 	/* network */
 
@@ -334,6 +349,21 @@ func errEmptyPassword() *SnowflakeError {
 	return &SnowflakeError{
 		Number:  ErrCodeEmptyPasswordCode,
 		Message: "password is empty",
+	}
+}
+
+func errEmptyPasswordAndToken() *SnowflakeError {
+	return &SnowflakeError{
+		Number:  ErrCodeEmptyPasswordAndToken,
+		Message: "both password and token are empty",
+	}
+}
+
+// Returned if OAuth is used to authenticate but it is missing required fields.
+func errEmptyOAuthParameters() *SnowflakeError {
+	return &SnowflakeError{
+		Number:  ErrCodeEmptyOAuthParameters,
+		Message: "client ID or client secret are empty",
 	}
 }
 
