@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package logical
@@ -201,6 +201,12 @@ type PluginVersion struct {
 type PluginVersioner interface {
 	// PluginVersion returns the version for the backend
 	PluginVersion() PluginVersion
+}
+
+// MetricsReporter is an optional interface that returns a
+// metric. Currently only implemented by the database backend.
+type MetricsReporter interface {
+	GetConnectionMetrics() (map[string]int, error)
 }
 
 var EmptyPluginVersion = PluginVersion{""}

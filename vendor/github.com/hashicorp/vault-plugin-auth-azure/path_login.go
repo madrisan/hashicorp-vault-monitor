@@ -563,10 +563,16 @@ func (c *additionalClaims) verifyRole(role *azureRole) error {
 		return fmt.Errorf("token is not yet valid (Token Not Before: %v)", notBefore)
 	}
 
-	if (len(role.BoundServicePrincipalIDs) == 1 && role.BoundServicePrincipalIDs[0] == "*") &&
-		(len(role.BoundGroupIDs) == 1 && role.BoundGroupIDs[0] == "*") {
-		return fmt.Errorf("expected specific bound_group_ids or bound_service_principal_ids; both cannot be '*'")
+	isBoundSPWildcard := len(role.BoundServicePrincipalIDs) == 1 && role.BoundServicePrincipalIDs[0] == "*"
+	isBoundGroupWildcard := len(role.BoundGroupIDs) == 1 && role.BoundGroupIDs[0] == "*"
+	isBoundSPEmpty := len(role.BoundServicePrincipalIDs) == 0
+	isBoundGroupEmpty := len(role.BoundGroupIDs) == 0
+
+	// Both BoundServicePrincipalIDs and BoundGroupIDs cannot be "*" or empty at the same time
+	if (isBoundSPWildcard && isBoundGroupWildcard) || (isBoundSPEmpty && isBoundGroupEmpty) {
+		return fmt.Errorf("expected specific bound_group_ids or bound_service_principal_ids; both cannot be empty or '*'")
 	}
+
 	switch {
 	case len(role.BoundServicePrincipalIDs) == 1 && role.BoundServicePrincipalIDs[0] == "*":
 		// Globbing on PrincipalIDs; can skip Service Principal ID check
@@ -604,13 +610,13 @@ func (c *additionalClaims) verifyXMSClaims(claimPattern, loginKey, loginValue st
 	var errs []error
 
 	if c.XMSAzureResourceID != "" {
-		if strings.Contains(c.XMSAzureResourceID, fmt.Sprintf(claimPattern, loginValue)) {
+		if containsInsensitive(c.XMSAzureResourceID, fmt.Sprintf(claimPattern, loginValue)) {
 			return nil
 		}
 		errs = append(errs, fmt.Errorf("xms_az_rid token claim does not match %s %s", loginKey, loginValue))
 	}
 
-	if strings.Contains(c.XMSManagedIdentityResourceID, fmt.Sprintf(claimPattern, loginValue)) {
+	if containsInsensitive(c.XMSManagedIdentityResourceID, fmt.Sprintf(claimPattern, loginValue)) {
 		return nil
 	}
 	errs = append(errs, fmt.Errorf("xms_mirid token claim does not match %s %s", loginKey, loginValue))
@@ -646,8 +652,8 @@ func (c *additionalClaims) verifyVMSS(vmssName string) error {
 // the provided resource_group_name field on login
 func (c *additionalClaims) verifyResourceGroup(resourceGroupName string, vmName, vmssName, resourceID string) error {
 	if vmssName == "" && vmName == "" {
-		if strings.Contains(resourceID, fmt.Sprintf(fmtRGClaimPattern, resourceGroupName)) ||
-			strings.Contains(resourceID, fmt.Sprintf(fmtRGClaimCamelCasePattern, resourceGroupName)) {
+		if containsInsensitive(resourceID, fmt.Sprintf(fmtRGClaimPattern, resourceGroupName)) ||
+			containsInsensitive(resourceID, fmt.Sprintf(fmtRGClaimCamelCasePattern, resourceGroupName)) {
 			return nil
 		}
 		return errors.New("provided resource_id does not match resource_group_name")
@@ -729,4 +735,11 @@ func (b *azureAuthBackend) getAPIVersionForResource(ctx context.Context, subscri
 	b.cacheLock.Unlock()
 
 	return apiVersion, nil
+}
+
+func containsInsensitive(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(a), strings.ToLower(b))
 }

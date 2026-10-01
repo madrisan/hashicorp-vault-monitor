@@ -115,6 +115,7 @@ The following connection parameters are supported:
 
   - disableOCSPChecks: false by default. Set to true to bypass the Online
     Certificate Status Protocol (OCSP) certificate revocation check.
+    OCSP module caches responses internally. If your application is long running, you can enable cache clearing by calling StartOCSPCacheClearer and disable by calling StopOCSPCacheClearer.
     IMPORTANT: Change the default value for testing or emergency situations only.
 
   - insecureMode: deprecated. Use disableOCSPChecks instead.
@@ -183,6 +184,8 @@ You can load the connnection configuration with .toml file format.
 With two environment variables, `SNOWFLAKE_HOME` (`connections.toml` file directory) and `SNOWFLAKE_DEFAULT_CONNECTION_NAME` (DSN name),
 the driver will search the config file and load the connection. You can find how to use this connection way at ./cmd/tomlfileconnection
 or Snowflake doc: https://docs.snowflake.com/en/developer-guide/snowflake-cli-v2/connecting/specify-credentials
+
+If the connection.toml file is readable by others, a warning will be logged. To disable it you need to set the environment variable `SF_SKIP_WARNING_FOR_READ_PERMISSIONS_ON_CONFIG_FILE` to true.
 
 # Proxy
 
@@ -321,6 +324,21 @@ query/command by Ctrl+C, add a os.Interrupt trap in context to execute methods t
 	... (Ctrl+C to cancel the query)
 
 See cmd/selectmany.go for the full example.
+
+# OpenTelemetry headers
+
+A context containing OpenTelemetry headers for distributed tracing can be
+created. Each query, both synchronous and asynchronous, run with this context
+will include the Trace ID and Span ID as metadata. If you are instrumenting your
+program with OpenTelemetry and exporting telemetry data to Snowflake, then
+queries run with this context will be properly nested under the appropriate
+parent span. This can be viewed in the Traces and Logs tab in Snowsight.
+
+For example:
+
+	ctx, parent_span := tracer.Start(context.Background(), "parent_span")
+	defer parent_span.End()
+	rows, err := db.QueryContext(ctx, query)
 
 # Supported Data Types
 

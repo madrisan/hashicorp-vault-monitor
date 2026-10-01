@@ -46,6 +46,7 @@ Temporary Items
 vault-plugin-database-snowflake
 bin/
 pkg/
+scripts/custom/
 
 .idea/
 # End of https://www.gitignore.io/api/go,macos

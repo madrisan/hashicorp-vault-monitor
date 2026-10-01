@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v0.14.0
+### Jun 3, 2025
+
+IMPROVEMENTS:
+* Updated dependencies:
+  * Go version: 1.23.6 -> 1.24.3
+  * `github.com/couchbase/gocb/v2` v2.9.3 -> v2.10.0
+  * `github.com/hashicorp/vault/sdk` v0.14.1 -> v0.17.0
+  * `github.com/ory/dockertest/v3` v3.11.0 -> v3.12.0
+  * `golang.org/x/mod` v0.22.0 -> v0.24.0
+
 ## v0.13.0
 ### Feb 7, 2025
 

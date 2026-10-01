@@ -8,20 +8,39 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/go-secure-stdlib/strutil"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
+const (
+	userCredentialType         = "user"
+	organizationCredentialType = "organization"
+	teamLegacyCredentialType   = "team_legacy"
+	teamCredentialType         = "team"
+)
+
+func credentialType_Values() []string {
+	return []string{
+		userCredentialType,
+		organizationCredentialType,
+		teamLegacyCredentialType,
+		teamCredentialType,
+	}
+}
+
 // terraformRoleEntry is a Vault role construct that maps to TFC/TFE
 type terraformRoleEntry struct {
-	Name         string        `json:"name"`
-	Organization string        `json:"organization,omitempty"`
-	TeamID       string        `json:"team_id,omitempty"`
-	UserID       string        `json:"user_id,omitempty"`
-	TTL          time.Duration `json:"ttl"`
-	MaxTTL       time.Duration `json:"max_ttl"`
-	Token        string        `json:"token,omitempty"`
-	TokenID      string        `json:"token_id,omitempty"`
+	Name           string        `json:"name"`
+	Organization   string        `json:"organization,omitempty"`
+	TeamID         string        `json:"team_id,omitempty"`
+	UserID         string        `json:"user_id,omitempty"`
+	Description    string        `json:"description,omitempty"`
+	TTL            time.Duration `json:"ttl"`
+	MaxTTL         time.Duration `json:"max_ttl"`
+	CredentialType string        `json:"credential_type,omitempty"`
+	Token          string        `json:"token,omitempty"`
+	TokenID        string        `json:"token_id,omitempty"`
 }
 
 func (r *terraformRoleEntry) toResponseData() map[string]interface{} {
@@ -30,15 +49,29 @@ func (r *terraformRoleEntry) toResponseData() map[string]interface{} {
 		"ttl":     r.TTL.Seconds(),
 		"max_ttl": r.MaxTTL.Seconds(),
 	}
+	if r.Description != "" {
+		respData["description"] = r.Description
+	}
 	if r.Organization != "" {
 		respData["organization"] = r.Organization
+		r.CredentialType = organizationCredentialType
 	}
 	if r.TeamID != "" {
 		respData["team_id"] = r.TeamID
+		// Default to legacy team credential type
+		if r.CredentialType == "" || r.CredentialType == teamLegacyCredentialType {
+			r.CredentialType = teamLegacyCredentialType
+			respData["credential_type"] = teamLegacyCredentialType
+		} else {
+			respData["credential_type"] = teamCredentialType
+		}
 	}
 	if r.UserID != "" {
 		respData["user_id"] = r.UserID
+		r.CredentialType = userCredentialType
+		respData["credential_type"] = userCredentialType
 	}
+
 	return respData
 }
 
@@ -57,6 +90,10 @@ func pathRole(b *tfBackend) []*framework.Path {
 					Type:        framework.TypeLowerCaseString,
 					Description: "Name of the role",
 					Required:    true,
+				},
+				"description": {
+					Type:        framework.TypeString,
+					Description: "Description of the token created by the role",
 				},
 				"organization": {
 					Type:        framework.TypeString,
@@ -77,6 +114,10 @@ func pathRole(b *tfBackend) []*framework.Path {
 				"max_ttl": {
 					Type:        framework.TypeDurationSecond,
 					Description: "Maximum time for role. If not set or set to 0, will use system default.",
+				},
+				"credential_type": {
+					Type:        framework.TypeString,
+					Description: "Credential type to be used for the token. Can be either 'user', 'org', 'team', or 'team_legacy'(deprecated).",
 				},
 			},
 			Operations: map[logical.Operation]framework.OperationHandler{
@@ -154,16 +195,38 @@ func (b *tfBackend) pathRolesWrite(ctx context.Context, req *logical.Request, d 
 	}
 
 	roleEntry.Name = name
-	if organization, ok := d.GetOk("organization"); ok {
-		roleEntry.Organization = organization.(string)
+
+	// Will set if users dont. Must be set for multi-team tokens
+	if credentialTypeRaw, ok := d.GetOk("credential_type"); ok {
+		roleEntry.CredentialType = credentialTypeRaw.(string)
+		if !strutil.StrListContains(credentialType_Values(), roleEntry.CredentialType) {
+			return logical.ErrorResponse("unrecognized credential type: %s", roleEntry.CredentialType), nil
+		}
 	}
 
-	if teamID, ok := d.GetOk("team_id"); ok {
-		roleEntry.TeamID = teamID.(string)
+	if organization, ok := d.GetOk("organization"); ok {
+		roleEntry.Organization = organization.(string)
+		if roleEntry.CredentialType == "" {
+			roleEntry.CredentialType = organizationCredentialType
+		}
 	}
 
 	if userID, ok := d.GetOk("user_id"); ok {
 		roleEntry.UserID = userID.(string)
+		if roleEntry.CredentialType == "" {
+			roleEntry.CredentialType = userCredentialType
+		}
+	}
+
+	if teamID, ok := d.GetOk("team_id"); ok {
+		roleEntry.TeamID = teamID.(string)
+		if roleEntry.CredentialType == "" || roleEntry.CredentialType == teamLegacyCredentialType {
+			roleEntry.CredentialType = teamLegacyCredentialType
+		}
+	}
+
+	if description, ok := d.GetOk("description"); ok {
+		roleEntry.Description = description.(string)
 	}
 
 	if roleEntry.UserID != "" && (roleEntry.Organization != "" || roleEntry.TeamID != "") {
@@ -186,10 +249,16 @@ func (b *tfBackend) pathRolesWrite(ctx context.Context, req *logical.Request, d 
 		return logical.ErrorResponse("ttl cannot be greater than max_ttl"), nil
 	}
 
+	if roleEntry.CredentialType == teamLegacyCredentialType {
+		if roleEntry.Description != "" || roleEntry.TTL != 0 || roleEntry.MaxTTL != 0 {
+			return logical.ErrorResponse("cannot provide description, ttl, or max_ttl with credential_type = team_legacy, try credential_type = team."), fmt.Errorf("test error")
+		}
+	}
+
 	// if we're creating a role to manage a Team or Organization, we need to
 	// create the token now. User tokens will be created when credentials are
 	// read.
-	if roleEntry.Organization != "" || roleEntry.TeamID != "" {
+	if roleEntry.CredentialType == organizationCredentialType || roleEntry.CredentialType == teamLegacyCredentialType {
 		token, err := b.createToken(ctx, req.Storage, roleEntry)
 		if err != nil {
 			return nil, err
@@ -259,16 +328,30 @@ const (
 	pathRoleHelpDescription = `
 This path allows you to read and write roles used to generate Terraform Cloud /
 Enterprise tokens. You can configure a role to manage an organization's token, a
-team's token, or a user's dynamic tokens.
+team's token, legacy team's token, or a user's dynamic tokens, based on the 
+credential_type. The credential_type is used to determine the type of token
+to be generated. The credential_type can be one of the following:
+- user: A user token. 
+- organization: An organization token. 
+- team: A team token. This is the recommend team token credential type.
+- team_legacy: A legacy team token. This is the default credential type if
+  team_id is set but credential_type is left empty.
 
-A Terraform Cloud/Enterprise Organization can only have one active token at a
-time. To manage an Organization's token, set the organization field.
+credential_type "user" can have multiple API tokens. To manage a user token, you 
+can user_id and credential_type "user". When issuing a call to create creds, this role
+will be used to generate the token. 
 
-A Terraform Cloud/Enterprise Team can only have one active token at a time. To
-manage a Teams's token, set the team_id field.
+credential_type "team" can have multiple API tokens. This is the recommended 
+team token credential type. To manage a team token, you can set a team_id 
+and set credential_type to "team". When issuing a call to create creds, this role 
+will be used to generate the token. You can set a ttl and max_ttl. Max_ttl will 
+also set an expiration timer on the terraform token (including the system max ttl).
 
-A Terraform Cloud/Enterprise User can have multiple API tokens. To manage a
-User's token, set the user_id field.
+credential_type "organization" or "team_legacy" can only have one active token at a
+time. When a new token is created, the old token will be revoked. This is
+because Terraform Cloud/Enterprise does not support multiple active tokens for these
+types.
+
 `
 
 	pathRoleListHelpSynopsis    = `List the existing roles in Terraform Cloud / Enterprise backend`

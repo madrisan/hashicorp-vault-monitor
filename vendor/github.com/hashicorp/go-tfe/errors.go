@@ -236,6 +236,8 @@ var (
 	ErrInvalidAccessToken = errors.New("invalid value for access token")
 
 	ErrInvalidTaskResultsCallbackStatus = fmt.Errorf("invalid value for task result status. Must be either `%s`, `%s`, or `%s`", TaskFailed, TaskPassed, TaskRunning)
+
+	ErrInvalidDescriptionConflict = errors.New("invalid attributes\n\nValidation failed: Description has already been taken")
 )
 
 var (
@@ -274,7 +276,7 @@ var (
 
 	ErrRequiredURL = errors.New("url is required")
 
-	ErrRequiredArchOrURLAndSha = errors.New("valid arch or url and sha is required")
+	ErrRequiredArchsOrURLAndSha = errors.New("valid archs or url and sha are required")
 
 	ErrRequiredAPIURL = errors.New("API URL is required")
 

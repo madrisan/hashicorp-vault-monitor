@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -1086,8 +1087,23 @@ func (c *Client) doRequest(r *request) (time.Duration, *http.Response, error) {
 	if err != nil {
 		return 0, nil, err
 	}
+
+	contentType := GetContentType(req)
+
+	if req != nil {
+		req.Header.Set(contentTypeHeader, contentType)
+	}
+
 	start := time.Now()
 	resp, err := c.config.HttpClient.Do(req)
+
+	if resp != nil {
+		respContentType := resp.Header.Get(contentTypeHeader)
+		if respContentType == "" || respContentType != contentType {
+			resp.Header.Set(contentTypeHeader, contentType)
+		}
+	}
+
 	diff := time.Since(start)
 	return diff, resp, err
 }
@@ -1181,6 +1197,9 @@ func parseQueryMeta(resp *http.Response, q *QueryMeta) error {
 	if err != nil {
 		return fmt.Errorf("Failed to parse X-Consul-LastContact: %v", err)
 	}
+	if last > math.MaxInt64 {
+		return fmt.Errorf("X-Consul-LastContact Header value is out of range: %d", last)
+	}
 	q.LastContact = time.Duration(last) * time.Millisecond
 
 	// Parse the X-Consul-KnownLeader
@@ -1221,6 +1240,9 @@ func parseQueryMeta(resp *http.Response, q *QueryMeta) error {
 		age, err := strconv.ParseUint(ageStr, 10, 64)
 		if err != nil {
 			return fmt.Errorf("Failed to parse Age Header: %v", err)
+		}
+		if age > math.MaxInt64 {
+			return fmt.Errorf("Age Header value is out of range: %d", last)
 		}
 		q.CacheAge = time.Duration(age) * time.Second
 	}

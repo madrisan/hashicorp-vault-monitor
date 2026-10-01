@@ -39,6 +39,14 @@ guide](./migration-guide.md).
 
 For a quick example, try out the Go Connector in a [Codelab][codelab].
 
+
+> [!WARNING]
+> **Go versions 1.25.2 and 1.24.8 are NOT compatible with Cloud SQL Go Connector.**
+>
+> A recent update to the Go version 1.25.2 and Go 1.24.8 breaks SAN verificaton in Go Connector. This is because Cloud SQL includes a trailing dot in the DNS name within the certificate's Subject Alternative Name (SAN), which the above Go versions reject as a malformed DNS name.
+>
+> For more details, please see the related Go issue: [crypto/x509: quadratic complexity when checking name constraints ](https://github.com/golang/go/issues/75715).
+
 ## Installation
 
 You can install this repo with `go get`:
@@ -96,7 +104,7 @@ using [pgx][] directly. See [pgx's advice on which to choose][pgx-advice].
 ##### Using the dialer with pgx
 
 To use the dialer with [pgx][], we recommend using connection pooling with
-[pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool) by configuring
+[pgxpool](https://pkg.go.dev/github.com/jackc/pgx/v5/pgxpool) by configuring
 a [Config.DialFunc][dial-func] like so:
 
 ``` go
@@ -105,7 +113,7 @@ import (
     "net"
 
     "cloud.google.com/go/cloudsqlconn"
-    "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/jackc/pgx/v5/pgxpool"
 )
 
 func connect() {
@@ -128,7 +136,7 @@ func connect() {
     }
 
     // Interact with the driver directly as you normally would
-    conn, err := pgxpool.ConnectConfig(context.Background(), config)
+    pool, err := pgxpool.NewWithConfig(context.Background(), config)
     if err != nil {
         /* handle error */
     }
@@ -143,7 +151,7 @@ func connect() {
 
 ##### Using the dialer with `database/sql`
 
-To use `database/sql`, call `pgxv4.RegisterDriver` with any necessary Dialer
+To use `database/sql`, call `pgxv5.RegisterDriver` with any necessary Dialer
 configuration. Note: the connection string must use the keyword/value format
 with host set to the instance connection name. The returned `cleanup` func
 will stop the dialer's background refresh goroutine and so should only be called
@@ -154,11 +162,11 @@ import (
     "database/sql"
 
     "cloud.google.com/go/cloudsqlconn"
-    "cloud.google.com/go/cloudsqlconn/postgres/pgxv4"
+    "cloud.google.com/go/cloudsqlconn/postgres/pgxv5"
 )
 
 func connect() {
-    cleanup, err := pgxv4.RegisterDriver("cloudsql-postgres", cloudsqlconn.WithIAMAuthN())
+    cleanup, err := pgxv5.RegisterDriver("cloudsql-postgres", cloudsqlconn.WithIAMAuthN())
     if err != nil {
         // ... handle error
     }
@@ -234,6 +242,111 @@ func connect() {
     // ... etc
 }
 ```
+
+### Using Advanced Disaster Recovery and DNS domain names to identify instances
+
+The connector can be configured to use DNS to look up an instance.
+Use a DNS name managed by Cloud SQL [Advanced Disaster Recovery](https://docs.cloud.google.com/sql/docs/mysql/use-advanced-disaster-recovery),
+or a domain name that you manage.
+
+#### Using Advanced Recovery Write Endpoint DNS Name
+
+[Advanced Disaster Recovery](https://docs.cloud.google.com/sql/docs/mysql/use-advanced-disaster-recovery)
+creates geographically distributed replicas of your Cloud SQL database instance. When you perform
+switchover or failover on the database instance, the connector will gracefully disconnect from the
+old primary instance and reconnect to the new primary instance.
+
+Follow the instructions in [Connect using Write Endpoint](https://docs.cloud.google.com/sql/docs/mysql/connect-to-instance-using-write-endpoint)
+to get the write endpoint DNS name for your primary instance. Then, use this write endpoint DNS
+name to configure the connector.
+
+#### Configure your DNS Records
+
+The connector may be configured to use DNS that you define as well.
+
+Add a DNS TXT record for the Cloud SQL instance to a **private** DNS server 
+or a private Google Cloud DNS Zone used by your application. 
+
+**Note:** You are strongly discouraged from adding DNS records for your 
+Cloud SQL instances to a public DNS server. This would allow anyone on the
+internet to discover the Cloud SQL instance name. 
+
+For example: suppose you wanted to use the domain name 
+`prod-db.mycompany.example.com` to connect to your database instance 
+`my-project:region:my-instance`. You would create the following DNS record: 
+
+- Record type: `TXT` 
+- Name: `prod-db.mycompany.example.com` – This is the domain name used by the application
+- Value: `my-project:region:my-instance` – This is the instance name
+
+#### Configure the connector
+
+Configure the connector as described above, replacing the connector ID with
+the DNS name. 
+
+Adapting the MySQL + database/sql example above:
+
+```go
+package main
+
+import (
+	"database/sql"
+
+	"cloud.google.com/go/cloudsqlconn"
+	"cloud.google.com/go/cloudsqlconn/mysql/mysql"
+)
+
+func connect() {
+	cleanup, err := mysql.RegisterDriver("cloudsql-mysql",
+		cloudsqlconn.WithDNSResolver())
+	if err != nil {
+		// ... handle error
+	}
+	// call cleanup when you're done with the database connection
+	defer cleanup()
+
+	db, err := sql.Open(
+		"cloudsql-mysql",
+		"myuser:mypass@cloudsql-mysql(prod-db.mycompany.example.com)/mydb",
+	)
+	// ... etc
+}
+```
+
+### Automatic fail-over using DNS domain names
+
+When the connector is configured using a domain name, the connector will 
+periodically check if the DNS record for an instance changes. When the connector 
+detects that the domain name refers to a different instance, the connector will
+close all open connections to the old instance. Subsequent connection attempts
+will be directed to the new instance. 
+
+For example: suppose application is configured to connect using the
+domain name `prod-db.mycompany.example.com`. Initially the corporate DNS 
+zone has a TXT record with the value `my-project:region:my-instance`. The
+application establishes connections to the `my-project:region:my-instance` 
+Cloud SQL instance. 
+
+Then, to reconfigure the application to use a different database
+instance, change the value of the `prod-db.mycompany.example.com` DNS record
+from `my-project:region:my-instance` to `my-project:other-region:my-instance-2`
+
+The connector inside the application detects the change to this
+DNS record. Now, when the application connects to its database using the 
+domain name `prod-db.mycompany.example.com`, it will connect to the
+`my-project:other-region:my-instance-2` Cloud SQL instance. 
+
+The connector will automatically close all existing connections to
+`my-project:region:my-instance`. This will force the connection pools to 
+establish new connections. Also, it may cause database queries in progress 
+to fail. 
+
+The connector will poll for changes to the DNS name every 30 seconds by default.
+You may configure the frequency of the connections using the option 
+`WithFailoverPeriod(d time.Duration)`. When this is set to 0, the connector will
+disable polling and only check if the DNS record changed when it is
+creating a new connection. 
+
 
 ### Using Options
 
@@ -341,7 +454,9 @@ Supported metrics include:
 - `cloudsqlconn/refresh_success_count`: The number of successful certificate
   refresh operations
 - `cloudsqlconn/refresh_failure_count`: The number of failed refresh
-  operations.
+  operations
+- `cloudsqlconn/bytes_sent`: The number of bytes sent to Cloud SQL
+- `cloudsqlconn/bytes_received`: The number of bytes received from Cloud SQL
 
 Supported traces include:
 
@@ -379,10 +494,87 @@ func main() {
     // ...
 }
 ```
+
+As OpenTelemetry has now reached feature parity with OpenCensus, the migration
+from OpenCensus to OpenTelemetry is strongly encouraged.
+[OpenTelemetry bridge](https://github.com/open-telemetry/opentelemetry-go/tree/main/bridge/opencensus)
+can be leveraged to migrate to OpenTelemetry without the need of replacing the
+OpenCensus APIs in this library. Example code is shown below for migrating an
+application using the OpenTelemetry bridge for traces.
+
+```golang
+import (
+	texporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
+	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/bridge/opencensus"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"google.golang.org/api/option"
+)
+
+func main() {
+	// trace.AlwaysSample() is expensive. Replacing it with your own
+	// sampler for production environments is recommended.
+	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+
+	exporter, err := texporter.New(
+		texporter.WithTraceClientOptions([]option.ClientOption{option.WithTelemetryDisabled()}),
+		texporter.WithProjectID("mycoolproject"),
+	)
+	if err != nil {
+		// Handle error
+	}
+
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	otel.SetTracerProvider(tp)
+	tracer := tp.Tracer("Cloud SQL Go Connector Trace")
+	trace.DefaultTracer = opencensus.NewTracer(tracer)
+
+	// Use cloudsqlconn as usual.
+	// ...
+}
+```
+
+A known OpenTelemetry issue has been reported [here](https://github.com/googleapis/google-cloud-go/issues/7100).
+It shouldn't impact database operations.
+
 [OpenCensus]: https://opencensus.io/
 [exporter]: https://opencensus.io/exporters/
 [Cloud Monitoring]: https://cloud.google.com/monitoring
 [Cloud Trace]: https://cloud.google.com/trace
+
+### Debug Logging
+
+The Go Connector supports optional debug logging to help diagnose problems with
+the background certificate refresh. To enable it, provide a logger that
+implements the `debug.ContextLogger` interface when initializing the Dialer.
+
+For example:
+
+``` go
+import (
+    "context"
+    "net"
+
+    "cloud.google.com/go/cloudsqlconn"
+)
+
+type myLogger struct{}
+
+func (l *myLogger) Debugf(ctx context.Context, format string, args ...interface{}) {
+    // Log as you like here
+}
+
+func connect() {
+    l := &myLogger{}
+
+    d, err := NewDialer(
+        context.Background(),
+        cloudsqlconn.WithContextDebugLogger(l),
+    )
+    // use dialer as usual...
+}
+```
 
 ## Support policy
 
@@ -402,7 +594,7 @@ supported for 1 year.
 **Unsupported** - Any major version that has been deprecated for >=1 year is
 considered unsupported.
 
-## Supported Go Versions
+### Supported Go Versions
 
 We follow the [Go Version Support Policy][go-policy] used by Google Cloud
 Libraries for Go.

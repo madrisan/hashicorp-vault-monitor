@@ -3,6 +3,7 @@ TEST?=$$(go list ./... | grep -v /vendor/ | grep -v teamcity)
 VETARGS?=-asmdecl -atomic -bool -buildtags -copylocks -methods -nilfunc -printf -rangeloops -shift -structtags -unsafeptr
 BUILD_TAGS?=${TOOL}
 GOFMT_FILES?=$$(find . -name '*.go' | grep -v vendor)
+TESTARGS ?= -test.v -test.count=1 -test.timeout=20m -parallel=4
 
 # bin generates the releaseable binaries for this plugin
 bin: fmtcheck generate
@@ -17,11 +18,11 @@ dev: fmtcheck generate
 
 # test runs the unit tests and vets the code
 test: fmtcheck generate
-	CGO_ENABLED=0 VAULT_TOKEN= VAULT_ACC= go test -v -tags='$(BUILD_TAGS)' $(TEST) $(TESTARGS) -count=1 -timeout=20m -parallel=4
+	CGO_ENABLED=0 VAULT_TOKEN= VAULT_ACC= go test -v -tags='$(BUILD_TAGS)' $(TEST) $(TESTARGS)
 
 # test runs the acceptance tests and vets the code
 testacc: fmtcheck generate
-	CGO_ENABLED=0 VAULT_TOKEN= VAULT_ACC=1 go test -v -tags='$(BUILD_TAGS)' $(TEST) $(TESTARGS) -count=1 -timeout=20m -parallel=4
+	CGO_ENABLED=0 VAULT_TOKEN= VAULT_ACC=1 go test -v -tags='$(BUILD_TAGS)' $(TEST) $(TESTARGS)
 
 testcompile: fmtcheck generate
 	@for pkg in $(TEST) ; do \

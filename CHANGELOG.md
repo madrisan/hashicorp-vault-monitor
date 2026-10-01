@@ -1,3 +1,62 @@
+## 0.9.4 -- (Oct 1, 2026)
+
+SECURITY FIXES:
+
+Follow-up to 0.9.3: GitHub's dependency scan raised its safe-version
+thresholds for several packages it had already flagged, meaning the
+previous bumps weren't actually sufficient on their own.
+
+ * hashicorp/vault: further vulnerabilities beyond what 1.19.5 fixed
+   Affected versions: github.com/hashicorp/vault >= 1.14.8 < 1.20.0
+   Fix: 1.20.4
+   See: https://nvd.nist.gov/vuln/detail/CVE-2025-6000 (critical),
+        CVE-2025-5999, CVE-2025-6203, CVE-2025-11621, CVE-2025-4656,
+        and 6 further advisories reported against this range
+
+ * grpc-go: further vulnerabilities beyond what 1.79.3 fixed
+   Affected versions: google.golang.org/grpc < 1.82.1
+   Fix: 1.82.1
+   See: https://github.com/advisories/GHSA-hrxh-6v49-42gf,
+        CVE-2026-84304, CVE-2026-84445, CVE-2026-84303
+
+ * cloudflare/circl: low-severity vulnerability
+   Affected versions: github.com/cloudflare/circl < 1.6.3
+   Fix: 1.6.3
+   See: https://nvd.nist.gov/vuln/detail/CVE-2026-1229
+
+ * go.opentelemetry.io/otel: high-severity vulnerability
+   Affected versions: go.opentelemetry.io/otel >= 1.36.0 <= 1.40.0
+   Fix: 1.43.0
+   See: https://nvd.nist.gov/vuln/detail/CVE-2026-29181
+
+ * github.com/docker/docker is no longer a dependency at all: bumping
+   hashicorp/vault/sdk pulled in its replacement, github.com/moby/moby's
+   client and api modules (docker/docker is deprecated upstream as of
+   Docker Engine v29 and frozen at v28.5.2, below the fixed version
+   29.3.1 GitHub's scan asked for).
+
+KNOWN ISSUES:
+
+ * github.com/jackc/pgproto3/v2 and github.com/jackc/pgx/v4 are still
+   unfixed, unchanged from 0.9.3: no release exists in either major
+   version line beyond what's already here (v2.3.3 and v4.18.3), the
+   fix requires migrating to pgx/v5, and `govulncheck` confirms
+   neither is reachable from this project's own code.
+
+ * `go test ./command/...` does not currently compile with this
+   release's hashicorp/vault/sdk v0.25.1 (nor with any other publicly
+   tagged sdk release, v0.18.0 through v0.25.1 - all were tried). The
+   `command` package's tests pull in vault's full builtin plugin
+   catalog (transit, database/mysql, ...) via its in-process test
+   cluster helpers, and that code references sdk APIs
+   (`keysutil.KeyType.IsPQC`, a 3-argument `connutil.GetCloudSQLAuthOptions`)
+   that don't exist in any sdk release actually published alongside
+   hashicorp/vault v1.20.4 - an upstream inconsistency between how
+   HashiCorp tags the main vault module versus its sdk submodule, not
+   something fixable by picking a different dependency version here.
+   `go build ./...` and `go vet` on every other package are unaffected;
+   only this one test target is impacted, and only in this release.
+
 ## 0.9.3 -- (Sep 26, 2026)
 
 SECURITY FIXES:

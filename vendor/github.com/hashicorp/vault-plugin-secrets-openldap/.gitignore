@@ -41,9 +41,6 @@ website/build
 .vagrant/
 Vagrantfile
 
-# Configs
-*.hcl
-
 .DS_Store
 .idea
 .vscode
@@ -81,3 +78,11 @@ tmp/
 
 scripts/custom.sh
 
+**/.terraform/*
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+
+# ldap racf terraform
+seed.ldif
+cleanup.ldif

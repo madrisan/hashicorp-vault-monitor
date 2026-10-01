@@ -14,25 +14,33 @@ type routeEndpoint struct {
 	Address     string
 	IsSeedNode  bool
 	ServerGroup string
+
+	// NodeUUID is a unique identifier for the node that is given by ns-server. Only used as an attribute for app telemetry metrics.
+	NodeUUID string
+
+	// CanonicalAddress is the address for the node as given in cfgBucket.NodesExt[<index>].Hostname.
+	// This is not affected by whether alternate addresses are used. Only used as an attribute for app telemetry metrics.
+	CanonicalAddress string
 }
 
 type routeConfig struct {
-	revID          int64
-	revEpoch       int64
-	uuid           string
-	name           string
-	bktType        bucketType
-	kvServerList   routeEndpoints
-	capiEpList     routeEndpoints
-	mgmtEpList     routeEndpoints
-	n1qlEpList     routeEndpoints
-	ftsEpList      routeEndpoints
-	cbasEpList     routeEndpoints
-	eventingEpList routeEndpoints
-	gsiEpList      routeEndpoints
-	backupEpList   routeEndpoints
-	vbMap          *vbucketMap
-	ketamaMap      *ketamaContinuum
+	revID              int64
+	revEpoch           int64
+	uuid               string
+	name               string
+	bktType            bucketType
+	kvServerList       routeEndpoints
+	capiEpList         routeEndpoints
+	mgmtEpList         routeEndpoints
+	n1qlEpList         routeEndpoints
+	ftsEpList          routeEndpoints
+	cbasEpList         routeEndpoints
+	eventingEpList     routeEndpoints
+	gsiEpList          routeEndpoints
+	backupEpList       routeEndpoints
+	appTelemetryEpList routeEndpoints
+	vbMap              *vbucketMap
+	ketamaMap          *ketamaContinuum
 
 	clusterCapabilitiesVer []int
 	clusterCapabilities    map[string][]string

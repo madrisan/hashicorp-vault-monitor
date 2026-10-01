@@ -27,6 +27,28 @@ Feature requests can be submitted in the Issues section as well.
 If you believe you have found a security issue in Vault or with this plugin, _please 
 responsibly disclose_ by contacting HashiCorp at [security@hashicorp.com](mailto:security@hashicorp.com).
 
+### Configure Plugin
+
+A [scripted configuration](bootstrap/configure.sh) of the plugin is provided in
+this repository. You can use the script or manually configure the secrets engine
+using documentation.
+
+To apply the scripted configuration, run the `make configure` target to
+register, enable, and configure the plugin with your local Vault instance. You
+can specify the plugin name, plugin directory, mount path, connection URL and
+private key path. Default values for plugin name and directory from the
+Makefile will be used if arguments aren't provided.
+
+```sh
+$ PLUGIN_NAME=vault-plugin-database-snowflake \
+  PLUGIN_DIR=$GOPATH/vault-plugins \
+  CONNECTION_URL=foo.snowflakecomputing.com/BAR \
+  PRIVATE_KEY=/path/to/private/key/file \
+  SNOWFLAKE_USERNAME=user1 \
+  make configure
+```
+
+
 ## Acceptance Testing
 
 In order to perform acceptance testing, you need to set the environment variable `VAULT_ACC=1` 

@@ -93,7 +93,7 @@ tests, you must:
 
 - Have a service account in the project with the roles "Cloud KMS Admin" and "Cloud KMS Crypto Operator"
 - Set `GOOGLE_APPLICATION_CREDENTIALS` to the service account key credentials for the above account
-- Set `GOOGLE_CLOUD_PROJECT` to the name of the project
+- Set `GOOGLE_CLOUD_PROJECT` to the project ID
 - Request an increase to the Cloud Key Management Service (KMS) API Write-Requests quota to 600 per minute
 
 We recommend running tests in a dedicated Google Cloud project. On a fresh
@@ -123,7 +123,7 @@ While their monthly cost is minimal, this may be undesirable. As such, there a
 cleanup script is included. To execute this script, run:
 
 ```text
-$ export GOOGLE_CLOUD_PROJECT=my-test-project
+$ export GOOGLE_CLOUD_PROJECT=<project-id>
 $ go run test/cleanup/main.go
 ```
 

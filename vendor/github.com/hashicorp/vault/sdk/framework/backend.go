@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package framework
@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/go-kms-wrapping/entropy/v2"
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/go-secure-stdlib/parseutil"
+	iRegexp "github.com/hashicorp/go-secure-stdlib/regexp"
 	"github.com/hashicorp/vault/sdk/database/helper/connutil"
 	"github.com/hashicorp/vault/sdk/helper/consts"
 	"github.com/hashicorp/vault/sdk/helper/errutil"
@@ -115,7 +116,10 @@ type Backend struct {
 
 	// ActivationFunc is the callback function used by ActivationFlags to
 	// communicate with a plugin to activate a feature.
-	ActivationFunc func(context.Context, *logical.Request) error
+	ActivationFunc func(context.Context, *logical.Request, string) error
+
+	// ConsumptionBillingManager is the consumption billing manager the backend can use to write billing data.
+	ConsumptionBillingManager logical.ConsumptionBillingManager
 
 	logger       log.Logger
 	system       logical.SystemView
@@ -439,6 +443,11 @@ func (b *Backend) Setup(ctx context.Context, config *logical.BackendConfig) erro
 	b.system = config.System
 	b.events = config.EventsSender
 	b.observations = config.ObservationRecorder
+	if b.System() != nil && b.System().GetConsumptionBillingManager() != nil {
+		b.ConsumptionBillingManager = b.System().GetConsumptionBillingManager()
+	} else {
+		b.ConsumptionBillingManager = logical.NewNullConsumptionBillingManager()
+	}
 	return nil
 }
 
@@ -486,6 +495,35 @@ func (b *Backend) Route(path string) *Path {
 	return result
 }
 
+// RecoverSourcePathFieldData returns the captures from the recover source path
+// as field data
+func (b *Backend) RecoverSourcePathFieldData(req *logical.Request) (*FieldData, error) {
+	if req.RecoverSourcePath == "" {
+		return nil, fmt.Errorf("request has no recover source path")
+	}
+	newPath, _ := b.route(req.Path)
+	sourcePath, sourceCaptures := b.route(req.RecoverSourcePath)
+	if sourcePath == nil || sourcePath.Pattern != newPath.Pattern {
+		return nil, fmt.Errorf("recover source path %q does not match request path %q", req.RecoverSourcePath, req.Path)
+	}
+
+	raw := make(map[string]interface{}, len(sourceCaptures))
+	for k, v := range sourceCaptures {
+		raw[k] = v
+	}
+	fd := FieldData{
+		Raw:    raw,
+		Schema: sourcePath.Fields,
+	}
+
+	err := fd.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("field validation of recover source path failed: %w", err)
+	}
+
+	return &fd, nil
+}
+
 // Secret is used to look up the secret with the given type.
 func (b *Backend) Secret(k string) *Secret {
 	for _, s := range b.Secrets {
@@ -516,7 +554,7 @@ func (b *Backend) init() {
 	for i, p := range b.Paths {
 		// Detect the coding error of failing to initialise Pattern
 		if len(p.Pattern) == 0 {
-			panic(fmt.Sprintf("Routing pattern cannot be blank"))
+			panic("Routing pattern cannot be blank")
 		}
 
 		// Detect the coding error of attempting to define a CreateOperation without defining an ExistenceCheck
@@ -537,8 +575,10 @@ func (b *Backend) init() {
 			p.Pattern = p.Pattern + "$"
 		}
 
-		// Detect the coding error of an invalid Pattern
-		b.pathsRe[i] = regexp.MustCompile(p.Pattern)
+		// Detect the coding error of an invalid Pattern. We are using an interned
+		// regexps library here to save memory, since we can have many instances of the
+		// same backend.
+		b.pathsRe[i] = iRegexp.MustCompileInterned(p.Pattern)
 	}
 }
 
@@ -693,6 +733,11 @@ func (b *Backend) handleRotation(ctx context.Context, req *logical.Request) (*lo
 		return nil, logical.ErrUnsupportedOperation
 	}
 
+	// rotation is a write operation, so we short-circuit the request
+	if !b.WriteSafeReplicationState() {
+		return nil, logical.ErrReadOnly
+	}
+
 	err := b.RotateCredential(ctx, req)
 	if err != nil {
 		return nil, err
@@ -784,6 +829,41 @@ func (b *Backend) RecordObservation(ctx context.Context, observationType string,
 		return ErrNoObservations
 	}
 	return b.observations.RecordObservationFromPlugin(ctx, observationType, data)
+}
+
+// RecordObservationWithRequest is used to record observations through the
+// plugin's observation system. It attaches information from the request to the
+// observation data. The request path, client ID, entity ID, and request ID are
+// included.
+// This method returns ErrNoObservations if the observation system has not been
+// configured or enabled.
+func (b *Backend) RecordObservationWithRequest(ctx context.Context, req *logical.Request, observationType string, data map[string]interface{}) error {
+	if b.observations == nil {
+		return ErrNoObservations
+	}
+
+	// Attach request information to the observation data
+	if req != nil {
+		if data == nil {
+			data = make(map[string]interface{})
+		}
+		data["path"] = req.Path
+		data["client_id"] = req.ClientID
+		data["entity_id"] = req.EntityID
+		data["request_id"] = req.ID
+	}
+
+	return b.observations.RecordObservationFromPlugin(ctx, observationType, data)
+}
+
+// TryRecordObservationWithRequest is like RecordObservationWithRequest but
+// logs a warning instead of returning an error if recording the observation fails
+// for reasons other than the observation system not being configured/enabled
+func (b *Backend) TryRecordObservationWithRequest(ctx context.Context, req *logical.Request, observationType string, data map[string]interface{}) {
+	err := b.RecordObservationWithRequest(ctx, req, observationType, data)
+	if err != nil && !errors.Is(err, ErrNoObservations) {
+		b.Logger().Warn("failed to record observation", "error", err, "observation_type", observationType)
+	}
 }
 
 // FieldSchema is a basic schema to describe the format of a path field.

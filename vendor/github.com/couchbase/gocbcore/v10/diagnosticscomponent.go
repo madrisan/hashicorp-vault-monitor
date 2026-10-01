@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -252,6 +252,8 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 		path = "/api/ping"
 	case CapiService:
 		path = "/"
+	case MgmtService:
+		path = "/whoami"
 	}
 
 	for {
@@ -301,13 +303,14 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 			var wg sync.WaitGroup
 			for _, ep := range epList {
 				wg.Add(1)
-				go func(ep string) {
+				go func(ep routeEndpoint) {
 					defer wg.Done()
 					req := &httpRequest{
 						Service:       service,
 						Method:        "GET",
 						Path:          path,
-						Endpoint:      ep,
+						Endpoint:      ep.Address,
+						NodeUUID:      ep.NodeUUID,
 						IsIdempotent:  true,
 						RetryStrategy: retryStrat,
 						Context:       ctx,
@@ -327,7 +330,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 						defer resp.Body.Close()
 						if resp.StatusCode > 200 {
 							state = PingStateError
-							b, pErr := ioutil.ReadAll(resp.Body)
+							b, pErr := io.ReadAll(resp.Body)
 							if pErr != nil {
 								logDebugf("Failed to read response body for ping: %v", pErr)
 							}
@@ -337,7 +340,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 					}
 					op.lock.Lock()
 					op.results[service] = append(op.results[service], EndpointPingResult{
-						Endpoint: ep,
+						Endpoint: ep.Address,
 						Error:    err,
 						Latency:  pingLatency,
 						Scope:    op.bucketName,
@@ -345,7 +348,7 @@ func (dc *diagnosticsComponent) pingHTTP(ctx context.Context, service ServiceTyp
 						State:    state,
 					})
 					op.lock.Unlock()
-				}(ep.Address)
+				}(ep)
 			}
 
 			wg.Wait()
@@ -669,7 +672,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 	case CapiService:
 		path = "/"
 	case MgmtService:
-		path = ""
+		path = "/whoami"
 	}
 
 	for {
@@ -723,14 +726,15 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 				var wg sync.WaitGroup
 				for _, ep := range epList {
 					wg.Add(1)
-					go func(ep string) {
+					go func(ep routeEndpoint) {
 						defer wg.Done()
 						req := &httpRequest{
 							Service:       service,
 							Method:        "GET",
 							Path:          path,
 							RetryStrategy: retryStrat,
-							Endpoint:      ep,
+							Endpoint:      ep.Address,
+							NodeUUID:      ep.NodeUUID,
 							IsIdempotent:  true,
 							Context:       ctx,
 							UniqueID:      uuid.New().String(),
@@ -766,7 +770,7 @@ func (dc *diagnosticsComponent) checkHTTPReady(ctx context.Context, service Serv
 							// Cancel this run entirely, we've successfully satisfied the requirements
 							cancel()
 						}
-					}(ep.Address)
+					}(ep)
 				}
 
 				wg.Wait()

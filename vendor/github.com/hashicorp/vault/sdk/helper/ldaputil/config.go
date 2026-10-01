@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package ldaputil
@@ -17,13 +17,30 @@ import (
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/go-secure-stdlib/tlsutil"
 	"github.com/hashicorp/vault/sdk/framework"
+	"github.com/hashicorp/vault/sdk/helper/strutil"
 )
 
-var ldapDerefAliasMap = map[string]int{
+var (
+	ldapDerefAliasMap = map[string]int{
 	"never":     ldap.NeverDerefAliases,
 	"finding":   ldap.DerefFindingBaseObj,
 	"searching": ldap.DerefInSearching,
 	"always":    ldap.DerefAlways,
+	}
+
+	cannotDeriveUserBindDNError = errors.New("cannot derive UserBindDN")
+)
+
+const (
+	SchemaAD       = "ad"
+	SchemaOpenLDAP = "openldap"
+)
+
+// SupportedSchemas returns a slice of different LDAP schemas supported
+// by the plugin. This is used to change behavior when modifying
+// user passwords (for example, during root password rotation).
+func SupportedSchemas() []string {
+	return []string{SchemaOpenLDAP, SchemaAD}
 }
 
 // ConfigFields returns all the config fields that can potentially be used by the LDAP client.
@@ -35,7 +52,8 @@ func ConfigFields() map[string]*framework.FieldSchema {
 			Default:     false,
 			Description: "Use anonymous binds when performing LDAP group searches (if true the initial credentials will still be used for the initial connection test).",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "Anonymous group search",
+				Name:  "Anonymous group search",
+				Group: "LDAP Options",
 			},
 		},
 		"url": {
@@ -43,7 +61,8 @@ func ConfigFields() map[string]*framework.FieldSchema {
 			Default:     "ldap://127.0.0.1",
 			Description: "LDAP URL to connect to (default: ldap://127.0.0.1). Multiple URLs can be specified by concatenating them with commas; they will be tried in-order.",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "URL",
+				Name:       "URL",
+				Identifier: true,
 			},
 		},
 
@@ -51,7 +70,8 @@ func ConfigFields() map[string]*framework.FieldSchema {
 			Type:        framework.TypeString,
 			Description: "LDAP domain to use for users (eg: ou=People,dc=example,dc=org)",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "User DN",
+				Name:  "User DN",
+				Group: "Customize User Search",
 			},
 		},
 
@@ -59,7 +79,8 @@ func ConfigFields() map[string]*framework.FieldSchema {
 			Type:        framework.TypeString,
 			Description: "LDAP DN for searching for the user DN (optional)",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "Name of Object to bind (binddn)",
+				Name:  "Name of Object to bind (binddn)",
+				Group: "Customize User Search",
 			},
 		},
 
@@ -68,6 +89,7 @@ func ConfigFields() map[string]*framework.FieldSchema {
 			Description: "LDAP password for searching for the user DN (optional)",
 			DisplayAttrs: &framework.DisplayAttributes{
 				Sensitive: true,
+				Group:     "Customize User Search",
 			},
 		},
 
@@ -75,7 +97,8 @@ func ConfigFields() map[string]*framework.FieldSchema {
 			Type:        framework.TypeString,
 			Description: "LDAP search base to use for group membership search (eg: ou=Groups,dc=example,dc=org)",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "Group DN",
+				Name:  "Group DN",
+				Group: "Customize Group Membership Search",
 			},
 		},
 
@@ -87,7 +110,8 @@ The template can access the following context variables: UserDN, Username
 Example: (&(objectClass=group)(member:1.2.840.113556.1.4.1941:={{.UserDN}}))
 Default: (|(memberUid={{.Username}})(member={{.UserDN}})(uniqueMember={{.UserDN}}))`,
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "Group Filter",
+				Name:  "Group Filter",
+				Group: "Customize Group Membership Search",
 			},
 		},
 
@@ -101,6 +125,7 @@ Default: cn`,
 			DisplayAttrs: &framework.DisplayAttributes{
 				Name:  "Group Attribute",
 				Value: "cn",
+				Group: "Customize Group Membership Search",
 			},
 		},
 
@@ -111,7 +136,8 @@ Default: cn`,
 The template can access the following context variables: UserAttr, Username
 Default: ({{.UserAttr}}={{.Username}})`,
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "User Search Filter",
+				Name:  "User Search Filter",
+				Group: "Customize User Search",
 			},
 		},
 
@@ -119,7 +145,8 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			Type:        framework.TypeString,
 			Description: "Enables userPrincipalDomain login with [username]@UPNDomain (optional)",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "User Principal (UPN) Domain",
+				Name:  "User Principal (UPN) Domain",
+				Group: "LDAP Options",
 			},
 		},
 
@@ -136,6 +163,7 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			DisplayAttrs: &framework.DisplayAttributes{
 				Name:  "User Attribute",
 				Value: "cn",
+				Group: "LDAP Options",
 			},
 		},
 
@@ -145,6 +173,7 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			DisplayAttrs: &framework.DisplayAttributes{
 				Name:     "CA certificate",
 				EditType: "file",
+				Group:    "LDAP Options",
 			},
 		},
 
@@ -154,6 +183,7 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			DisplayAttrs: &framework.DisplayAttributes{
 				Name:     "Client certificate",
 				EditType: "file",
+				Group:    "LDAP Options",
 			},
 		},
 
@@ -163,6 +193,7 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			DisplayAttrs: &framework.DisplayAttributes{
 				Name:     "Client key",
 				EditType: "file",
+				Group:    "LDAP Options",
 			},
 		},
 
@@ -170,7 +201,8 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			Type:        framework.TypeBool,
 			Description: "Use anonymous bind to discover the bind DN of a user (optional)",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "Discover DN",
+				Name:  "Discover DN",
+				Group: "LDAP Options",
 			},
 		},
 
@@ -178,7 +210,8 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			Type:        framework.TypeBool,
 			Description: "Skip LDAP server SSL Certificate verification - VERY insecure (optional)",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "Insecure TLS",
+				Name:  "Insecure TLS",
+				Group: "LDAP Options",
 			},
 		},
 
@@ -186,7 +219,8 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			Type:        framework.TypeBool,
 			Description: "Issue a StartTLS command after establishing unencrypted connection (optional)",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "Issue StartTLS",
+				Name:  "Issue StartTLS",
+				Group: "LDAP Options",
 			},
 		},
 
@@ -195,7 +229,8 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			Default:     "tls12",
 			Description: "Minimum TLS version to use. Accepted values are 'tls10', 'tls11', 'tls12' or 'tls13'. Defaults to 'tls12'",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "Minimum TLS Version",
+				Name:  "Minimum TLS Version",
+				Group: "LDAP Options",
 			},
 			AllowedValues: []interface{}{"tls10", "tls11", "tls12", "tls13"},
 		},
@@ -205,7 +240,8 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			Default:     "tls12",
 			Description: "Maximum TLS version to use. Accepted values are 'tls10', 'tls11', 'tls12' or 'tls13'. Defaults to 'tls12'",
 			DisplayAttrs: &framework.DisplayAttributes{
-				Name: "Maximum TLS Version",
+				Name:  "Maximum TLS Version",
+				Group: "LDAP Options",
 			},
 			AllowedValues: []interface{}{"tls10", "tls11", "tls12", "tls13"},
 		},
@@ -213,7 +249,11 @@ Default: ({{.UserAttr}}={{.Username}})`,
 		"deny_null_bind": {
 			Type:        framework.TypeBool,
 			Default:     true,
+			Deprecated:  true,
 			Description: "Denies an unauthenticated LDAP bind request if the user's password is empty; defaults to true",
+			DisplayAttrs: &framework.DisplayAttributes{
+				Group: "LDAP Options",
+			},
 		},
 
 		"case_sensitive_names": {
@@ -225,6 +265,9 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			Type:        framework.TypeBool,
 			Default:     false,
 			Description: "If true, use the Active Directory tokenGroups constructed attribute of the user to find the group memberships. This will find all security groups including nested ones.",
+			DisplayAttrs: &framework.DisplayAttributes{
+				Group: "Customize Group Membership Search",
+			},
 		},
 
 		"use_pre111_group_cn_behavior": {
@@ -260,6 +303,11 @@ Default: ({{.UserAttr}}={{.Username}})`,
 			Type:        framework.TypeBool,
 			Description: "If true, matching sAMAccountName attribute values will be allowed to login when upndomain is defined.",
 			Default:     false,
+		},
+		"schema": {
+			Type:        framework.TypeString,
+			Description: "LDAP schema type: 'ad' for Active Directory, 'openldap' for OpenLDAP. Determines root password rotation behavior.",
+			Default:     SchemaOpenLDAP,
 		},
 	}
 }
@@ -442,6 +490,10 @@ func NewConfigEntry(existing *ConfigEntry, d *framework.FieldData) (*ConfigEntry
 	if _, ok := d.Raw["enable_samaccountname_login"]; ok || !hadExisting {
 		cfg.EnableSamaccountnameLogin = d.Get("enable_samaccountname_login").(bool)
 	}
+	if _, ok := d.Raw["schema"]; ok || !hadExisting {
+		rawSchema := d.Get("schema").(string)
+		cfg.Schema = NormalizedSchema(rawSchema)
+	}
 
 	return cfg, nil
 }
@@ -462,7 +514,7 @@ type ConfigEntry struct {
 	StartTLS                 bool   `json:"starttls"`
 	BindDN                   string `json:"binddn"`
 	BindPassword             string `json:"bindpass"`
-	DenyNullBind             bool   `json:"deny_null_bind"`
+	DenyNullBind             bool   `json:"deny_null_bind"` // deprecated
 	DiscoverDN               bool   `json:"discoverdn"`
 	TLSMinVersion            string `json:"tls_min_version"`
 	TLSMaxVersion            string `json:"tls_max_version"`
@@ -472,6 +524,7 @@ type ConfigEntry struct {
 	ConnectionTimeout        int    `json:"connection_timeout"` // deprecated: use RequestTimeout
 	DerefAliases             string `json:"dereference_aliases"`
 	MaximumPageSize          int    `json:"max_page_size"`
+	Schema                   string `json:"schema"`
 
 	// These json tags deviate from snake case because there was a past issue
 	// where the tag was being ignored, causing it to be jsonified as "CaseSensitiveNames", etc.
@@ -515,6 +568,7 @@ func (c *ConfigEntry) PasswordlessMap() map[string]interface{} {
 		"dereference_aliases":         c.DerefAliases,
 		"max_page_size":               c.MaximumPageSize,
 		"enable_samaccountname_login": c.EnableSamaccountnameLogin,
+		"schema":                      NormalizedSchema(c.Schema), // LDAP schema type for password operations
 	}
 	if c.CaseSensitiveNames != nil {
 		m["case_sensitive_names"] = *c.CaseSensitiveNames
@@ -537,14 +591,24 @@ func validateCertificate(pemBlock []byte) error {
 	return nil
 }
 
-func (c *ConfigEntry) Validate() error {
+// Validates self-managed configs without requiring changing the delicate preexisting validation logic.
+func (c *ConfigEntry) ValidateSelfManaged(schemas ...string) error {
+	err := c.Validate(schemas...)
+	if err != nil && errors.Is(err, cannotDeriveUserBindDNError) {
+		// Do not enforce UserBindDN for self-managed LDAP configurations.
+		return nil
+	}
+	return err
+}
+
+func (c *ConfigEntry) Validate(schemas ...string) error {
 	if len(c.Url) == 0 {
 		return errors.New("at least one url must be provided")
 	}
 	// Note: This logic is driven by the logic in GetUserBindDN.
 	// If updating this, please also update the logic there.
 	if !c.DiscoverDN && (c.BindDN == "" || c.BindPassword == "") && c.UPNDomain == "" && c.UserDN == "" {
-		return errors.New("cannot derive UserBindDN")
+		return cannotDeriveUserBindDNError
 	}
 	tlsMinVersion, ok := tlsutil.TLSLookup[c.TLSMinVersion]
 	if !ok {
@@ -566,6 +630,15 @@ func (c *ConfigEntry) Validate() error {
 		if _, err := tls.X509KeyPair([]byte(c.ClientTLSCert), []byte(c.ClientTLSKey)); err != nil {
 			return errwrap.Wrapf("failed to parse client X509 key pair: {{err}}", err)
 		}
+	}
+	normalizedSchema := NormalizedSchema(c.Schema)
+	// use the default schema list if none provided
+	supportedSchemas := SupportedSchemas()
+	if len(schemas) > 0 {
+		supportedSchemas = schemas
+	}
+	if !strutil.StrListContains(supportedSchemas, normalizedSchema) {
+		return fmt.Errorf("unsupported schema type %q: must be one of %v", c.Schema, supportedSchemas)
 	}
 	return nil
 }
@@ -621,4 +694,12 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func NormalizedSchema(schema string) string {
+	normalizedSchema := strings.ToLower(strings.TrimSpace(schema))
+	if normalizedSchema == "" {
+		return SchemaOpenLDAP
+	}
+	return normalizedSchema
 }

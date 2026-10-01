@@ -72,8 +72,8 @@ func (b *tfBackend) pathCredentialsRead(ctx context.Context, req *logical.Reques
 		return nil, errors.New("error retrieving role: role is nil")
 	}
 
-	if roleEntry.UserID != "" {
-		return b.createUserCreds(ctx, req, roleEntry)
+	if roleEntry.CredentialType == userCredentialType || roleEntry.CredentialType == teamCredentialType {
+		return b.createUserOrMultiTeamCreds(ctx, req, roleEntry)
 	}
 
 	resp := &logical.Response{
@@ -85,19 +85,33 @@ func (b *tfBackend) pathCredentialsRead(ctx context.Context, req *logical.Reques
 			"role":         roleEntry.Name,
 		},
 	}
+
+	if roleEntry.Description != "" {
+		resp.Data["description"] = roleEntry.Description
+	}
 	return resp, nil
 }
 
-func (b *tfBackend) createUserCreds(ctx context.Context, req *logical.Request, role *terraformRoleEntry) (*logical.Response, error) {
+func (b *tfBackend) createUserOrMultiTeamCreds(ctx context.Context, req *logical.Request, role *terraformRoleEntry) (*logical.Response, error) {
 	token, err := b.createToken(ctx, req.Storage, role)
 	if err != nil {
 		return nil, err
 	}
 
-	resp := b.Secret(terraformTokenType).Response(map[string]interface{}{
+	data := map[string]interface{}{
 		"token":    token.Token,
 		"token_id": token.ID,
-	}, map[string]interface{}{
+	}
+
+	if token.Description != "" {
+		data["description"] = token.Description
+	}
+
+	if !token.ExpiredAt.IsZero() {
+		data["expired_at"] = token.ExpiredAt
+	}
+
+	resp := b.Secret(terraformTokenType).Response(data, map[string]interface{}{
 		"token_id": token.ID,
 		"role":     role.Name,
 	})
@@ -125,9 +139,14 @@ func (b *tfBackend) createToken(ctx context.Context, s logical.Storage, roleEntr
 	case isOrgToken(roleEntry.Organization, roleEntry.TeamID):
 		token, err = createOrgToken(ctx, client, roleEntry.Organization)
 	case isTeamToken(roleEntry.TeamID):
-		token, err = createTeamToken(ctx, client, roleEntry.TeamID)
+		if roleEntry.CredentialType == teamCredentialType {
+			token, err = createTeamTokenWithOptions(ctx, client, *roleEntry, b.System().MaxLeaseTTL())
+		} else {
+			// team_legacy tokens
+			token, err = createTeamLegacyToken(ctx, client, roleEntry.TeamID)
+		}
 	default:
-		token, err = createUserToken(ctx, client, roleEntry.UserID)
+		token, err = createUserToken(ctx, client, roleEntry.UserID, roleEntry.Description)
 	}
 
 	if err != nil {

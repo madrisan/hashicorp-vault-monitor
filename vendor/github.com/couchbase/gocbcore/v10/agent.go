@@ -30,6 +30,7 @@ type Agent struct {
 	errMap       *errMapComponent
 	collections  *collectionsComponent
 	tracer       *tracerComponent
+	telemetry    *telemetryComponent
 	http         *httpComponent
 	diagnostics  *diagnosticsComponent
 	crud         *crudComponent
@@ -261,6 +262,17 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 
 	c.tracer = newTracerComponent(config.TracerConfig.Tracer, config.BucketName, config.TracerConfig.NoRootTraceSpans, config.MeterConfig.Meter, c.cfgManager)
 
+	if !config.SecurityConfig.NoTLSSeedNode {
+		c.telemetry = newTelemetryComponent(telemetryComponentProps{
+			reporter:   config.TelemetryConfig.TelemetryReporter,
+			auth:       config.SecurityConfig.Auth,
+			tlsConfig:  tlsConfig,
+			agent:      agentName(userAgent),
+			cfgMgr:     c.cfgManager,
+			bucketName: config.BucketName,
+		})
+	}
+
 	c.dialer = newMemdClientDialerComponent(
 		memdClientDialerProps{
 			ServerWaitTimeout:    serverWaitTimeout,
@@ -305,6 +317,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		c.cfgManager,
 		c.errMap,
 		c.tracer,
+		c.telemetry,
 		c.dialer,
 		&kvMuxState{
 			tlsConfig:          tlsConfig,
@@ -342,6 +355,7 @@ func createAgent(config *AgentConfig) (*Agent, error) {
 		},
 		c.httpMux,
 		c.tracer,
+		c.telemetry,
 	)
 
 	var poller configPollerController
@@ -466,49 +480,49 @@ func (agent *Agent) MemdEps() []string {
 // CapiEps returns all the available endpoints for performing
 // map-reduce queries.
 func (agent *Agent) CapiEps() []string {
-	return agent.httpMux.CapiEps()
+	return makeEpList(agent.httpMux.CapiEps())
 }
 
 // MgmtEps returns all the available endpoints for performing
 // management queries.
 func (agent *Agent) MgmtEps() []string {
-	return agent.httpMux.MgmtEps()
+	return makeEpList(agent.httpMux.MgmtEps())
 }
 
 // N1qlEps returns all the available endpoints for performing
 // N1QL queries.
 func (agent *Agent) N1qlEps() []string {
-	return agent.httpMux.N1qlEps()
+	return makeEpList(agent.httpMux.N1qlEps())
 }
 
 // FtsEps returns all the available endpoints for performing
 // FTS queries.
 func (agent *Agent) FtsEps() []string {
-	return agent.httpMux.FtsEps()
+	return makeEpList(agent.httpMux.FtsEps())
 }
 
 // CbasEps returns all the available endpoints for performing
 // CBAS queries.
 func (agent *Agent) CbasEps() []string {
-	return agent.httpMux.CbasEps()
+	return makeEpList(agent.httpMux.CbasEps())
 }
 
 // EventingEps returns all the available endpoints for managing/interacting with the Eventing Service.
 func (agent *Agent) EventingEps() []string {
-	return agent.httpMux.EventingEps()
+	return makeEpList(agent.httpMux.EventingEps())
 }
 
 // GSIEps returns all the available endpoints for managing/interacting with the GSI Service.
 func (agent *Agent) GSIEps() []string {
-	return agent.httpMux.GSIEps()
+	return makeEpList(agent.httpMux.GSIEps())
 }
 
 // BackupEps returns all the available endpoints for managing/interacting with the Backup Service.
 func (agent *Agent) BackupEps() []string {
-	return agent.httpMux.BackupEps()
+	return makeEpList(agent.httpMux.BackupEps())
 }
 
-// HasCollectionsSupport verifies whether or not collections are available on the agent.
+// HasCollectionsSupport verifies whether collections are available on the agent.
 func (agent *Agent) HasCollectionsSupport() bool {
 	return agent.kvMux.SupportsCollections()
 }
@@ -518,12 +532,12 @@ func (agent *Agent) IsSecure() bool {
 	return agent.kvMux.IsSecure()
 }
 
-// UsingGCCCP returns whether or not the Agent is currently using GCCCP polling.
+// UsingGCCCP returns whether the Agent is currently using GCCCP polling.
 func (agent *Agent) UsingGCCCP() bool {
 	return agent.kvMux.SupportsGCCCP()
 }
 
-// HasSeenConfig returns whether or not the Agent has seen a valid cluster config. This does not mean that the agent
+// HasSeenConfig returns whether the Agent has seen a valid cluster config. This does not mean that the agent
 // currently has active connections.
 // Volatile: This API is subject to change at any time.
 func (agent *Agent) HasSeenConfig() (bool, error) {
@@ -631,7 +645,7 @@ func (agent *Agent) ReconfigureSecurity(opts ReconfigureSecurityOptions) error {
 		if opts.TLSRootCAProvider == nil {
 			return wrapError(errInvalidArgument, "must provide TLSRootCAProvider when UseTLS is true")
 		}
-		tlsConfig = createTLSConfig(auth, opts.TLSRootCAProvider)
+		tlsConfig = createTLSConfig(auth, nil, opts.TLSRootCAProvider)
 	}
 
 	agent.auth = auth
@@ -711,11 +725,15 @@ func onCCCPNoConfigFromAnyNode(agent srvAgent, err error) {
 		return
 	}
 
+	attemptSRVRefresh(agent, srvDetails)
+}
+
+func attemptSRVRefresh(agent srvAgent, srvDetails *srvDetails) {
 	logInfof("Refreshing SRV record: %s", srvDetails.Record)
 
 	var addrs []*net.SRV
 	for {
-		_, addrs, err = net.LookupSRV(srvDetails.Record.Scheme, srvDetails.Record.Proto, srvDetails.Record.Host)
+		_, addrs, err := net.LookupSRV(srvDetails.Record.Scheme, srvDetails.Record.Proto, srvDetails.Record.Host)
 		if err != nil {
 			if isLogRedactionLevelFull() {
 				logInfof("Failed to lookup SRV record: %s", redactSystemData(err))
@@ -837,7 +855,7 @@ func setupTLSConfig(addrs []string, config SecurityConfig) (*dynTLSConfig, error
 				return pool
 			}
 		}
-		tlsConfig = createTLSConfig(config.Auth, config.TLSRootCAProvider)
+		tlsConfig = createTLSConfig(config.Auth, nil, config.TLSRootCAProvider)
 	} else {
 		var endsInCloud bool
 		for _, host := range addrs {

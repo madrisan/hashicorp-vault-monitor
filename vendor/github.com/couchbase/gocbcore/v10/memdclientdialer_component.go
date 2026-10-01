@@ -103,7 +103,8 @@ type memdBoostrapCCCPUnsupportedHandler interface {
 }
 
 func newMemdClientDialerComponent(props memdClientDialerProps, bSettings bootstrapProps, breakerCfg CircuitBreakerConfig,
-	zLogger *zombieLoggerComponent, tracer *tracerComponent, cfgManager *configManagementComponent) *memdClientDialerComponent {
+	zLogger *zombieLoggerComponent, tracer *tracerComponent,
+	cfgManager *configManagementComponent) *memdClientDialerComponent {
 	dialer := &memdClientDialerComponent{
 		kvConnectTimeout:  props.KVConnectTimeout,
 		serverWaitTimeout: props.ServerWaitTimeout,
@@ -258,7 +259,7 @@ func (mcc *memdClientDialerComponent) dialMemdClient(cancelSig <-chan struct{}, 
 		}
 	}()
 
-	conn, err := dialMemdConn(ctx, address.Address, tlsConfig, deadline, mcc.connBufSize)
+	conn, err := dialMemdConn(ctx, address, tlsConfig, deadline, mcc.connBufSize)
 	cancel()
 	if err != nil {
 		if errors.Is(err, context.Canceled) {

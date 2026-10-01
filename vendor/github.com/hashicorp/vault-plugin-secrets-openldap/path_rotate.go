@@ -70,7 +70,14 @@ func (b *backend) pathRotateCredentials() []*framework.Path {
 }
 
 func (b *backend) pathRotateRootCredentialsUpdate(ctx context.Context, req *logical.Request, _ *framework.FieldData) (*logical.Response, error) {
-	return nil, b.rotateRootCredential(ctx, req)
+	err := b.rotateRootCredential(ctx, req)
+	if err != nil {
+		b.Logger().Error("failed to rotate root credential on user request", "path", req.Path, "error", err.Error())
+	} else {
+		b.Logger().Info("succesfully rotated root credential on user request", "path", req.Path)
+	}
+
+	return nil, err
 }
 
 func (b *backend) rotateRootCredential(ctx context.Context, req *logical.Request) error {
@@ -154,7 +161,6 @@ func (b *backend) pathRotateRoleCredentialsUpdate(ctx context.Context, req *logi
 	}
 	resp, err := b.setStaticAccountPassword(ctx, req.Storage, input)
 	if err != nil {
-		b.Logger().Warn("unable to rotate credentials in rotate-role", "error", err)
 		// Update the priority to re-try this rotation and re-add the item to
 		// the queue
 		item.Priority = time.Now().Add(10 * time.Second).Unix()
@@ -178,8 +184,11 @@ func (b *backend) pathRotateRoleCredentialsUpdate(ctx context.Context, req *logi
 	}
 
 	if err != nil {
+		b.Logger().Error("unable to rotate credentials in rotate-role on user request", "error", err)
 		return nil, fmt.Errorf("unable to finish rotating credentials; retries will "+
 			"continue in the background but it is also safe to retry manually: %w", err)
+	} else {
+		b.Logger().Info("successfully rotated credential in rotate-role on user request", "name", item.Key)
 	}
 
 	// We're not returning creds here because we do not know if its been processed

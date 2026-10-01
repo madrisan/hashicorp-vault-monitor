@@ -1,5 +1,22 @@
 ## Unreleased
 
+## 0.21.0
+### May 28, 2025
+
+IMPROVEMENTS:
+* Updated dependencies:
+  * golang.org/x/crypto v0.33.0 => v0.38.0
+  * golang.org/x/net v0.35.0 => v0.40.0
+  * golang.org/x/sys v0.30.0 => v0.33.0
+  * golang.org/x/text v0.22.0 => v0.25.0
+  * go 1.23.3 => 1.24
+  * toolchain go1.23.5 => go1.24.3
+  * github.com/go-jose/go-jose/v4 v4.0.4 => v4.1.0
+  * github.com/stretchr/testify v1.9.0 => v1.10.0
+  * github.com/aliyun/alibaba-cloud-sdk-go v1.63.84 -> v1.63.107
+  * github.com/hashicorp/vault/api v1.15.0 -> v1.16.0
+  * github.com/hashicorp/vault/sdk v0.14.1 -> v0.15.2
+
 ## 0.20.0
 ### Feb 12, 2025
 

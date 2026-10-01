@@ -23,6 +23,9 @@ type Config struct {
 	LastBindPassword         string    `json:"last_bind_password"`
 	LastBindPasswordRotation time.Time `json:"last_bind_password_rotation"`
 	Schema                   string    `json:"schema"`
+
+	// CredentialType is used to customize the Schema. Currently only used for type racf.
+	CredentialType CredentialType `json:"credential_type"`
 }
 
 func New(logger hclog.Logger) Client {

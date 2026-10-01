@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package tokenutil
@@ -47,6 +47,9 @@ type TokenParams struct {
 
 	// The TTL to user for the token
 	TokenTTL time.Duration `json:"token_ttl" mapstructure:"token_ttl"`
+
+	// The metadata to attach to the alias.
+	AliasMetadata map[string]string `json:"alias_metadata" mapstructure:"alias_metadata"`
 }
 
 // AddTokenFields adds fields to an existing role. It panics if it would
@@ -157,6 +160,15 @@ func TokenFields() map[string]*framework.FieldSchema {
 				Group: "Tokens",
 			},
 		},
+
+		"alias_metadata": {
+			Type:        framework.TypeKVPairs,
+			Description: "The metadata to be tied to generated entity alias. This should be a list or map containing the metadata in key value pairs",
+			DisplayAttrs: &framework.DisplayAttributes{
+				Name:  "Token Alias Metadata",
+				Group: "Tokens",
+			},
+		},
 	}
 }
 
@@ -238,6 +250,11 @@ func (t *TokenParams) ParseTokenFields(req *logical.Request, d *framework.FieldD
 		return errors.New("'token_ttl' cannot be greater than 'token_max_ttl'")
 	}
 
+	t.AliasMetadata = make(map[string]string)
+	if tokenMetadataRaw, ok := d.GetOk("alias_metadata"); ok {
+		t.AliasMetadata = tokenMetadataRaw.(map[string]string)
+	}
+
 	return nil
 }
 
@@ -260,6 +277,11 @@ func (t *TokenParams) PopulateTokenData(m map[string]interface{}) {
 	if len(t.TokenBoundCIDRs) == 0 {
 		m["token_bound_cidrs"] = []string{}
 	}
+
+	m["alias_metadata"] = map[string]string{}
+	if len(t.AliasMetadata) > 0 {
+		m["alias_metadata"] = t.AliasMetadata
+	}
 }
 
 // PopulateTokenAuth populates Auth with parameters
@@ -274,6 +296,18 @@ func (t *TokenParams) PopulateTokenAuth(auth *logical.Auth) {
 	auth.TokenType = t.TokenType
 	auth.TTL = t.TokenTTL
 	auth.NumUses = t.TokenNumUses
+
+	if len(t.AliasMetadata) > 0 && auth.Alias != nil {
+		if auth.Alias.CustomMetadata == nil {
+			auth.Alias.CustomMetadata = map[string]string{}
+		}
+		for k, v := range t.AliasMetadata {
+			if _, ok := auth.Alias.CustomMetadata[k]; !ok {
+				// Do not override metadata with the same key added by the caller
+				auth.Alias.CustomMetadata[k] = v
+			}
+		}
+	}
 }
 
 func DeprecationText(param string) string {

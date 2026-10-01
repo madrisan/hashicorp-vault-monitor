@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package consts
@@ -47,4 +47,6 @@ const (
 	PerformanceReplicationPathTarget = "performance"
 
 	DRReplicationPathTarget = "dr"
+
+	RecoverSourcePathHeader = "X-Vault-Recover-Source-Path"
 )
