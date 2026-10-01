@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package plugin
@@ -143,8 +143,16 @@ func (b *backendGRPCPluginServer) HandleRequest(ctx context.Context, args *pb.Ha
 
 	logicalReq.Storage = newGRPCStorageClient(brokeredClient)
 
-	reqCtx := pbMetadataCtxToLogicalCtx(ctx)
+	reqCtx, err := pbMetadataCtxToLogicalCtx(ctx)
+	if err != nil {
+		return &pb.HandleRequestReply{}, err
+	}
+
 	resp, respErr := backend.HandleRequest(reqCtx, logicalReq)
+	ws := logical.IndexStateFromContext(reqCtx)
+	if ws == nil {
+		ws = &logical.WALState{}
+	}
 
 	pbResp, err := pb.LogicalResponseToProtoResponse(resp)
 	if err != nil {
@@ -154,6 +162,10 @@ func (b *backendGRPCPluginServer) HandleRequest(ctx context.Context, args *pb.Ha
 	return &pb.HandleRequestReply{
 		Response: pbResp,
 		Err:      pb.ErrToProtoErr(respErr),
+		WalIndex: &pb.WALIndex{
+			LocalIndex:      ws.LocalIndex,
+			ReplicatedIndex: ws.ReplicatedIndex,
+		},
 	}, nil
 }
 

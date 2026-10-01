@@ -617,36 +617,36 @@ func (c *Client) retryHTTPCheck(ctx context.Context, resp *http.Response, err er
 
 // retryHTTPBackoff provides a generic callback for Client.Backoff which
 // will pass through all calls based on the status code of the response.
-func (c *Client) retryHTTPBackoff(min, max time.Duration, attemptNum int, resp *http.Response) time.Duration {
+func (c *Client) retryHTTPBackoff(minimum, maximum time.Duration, attemptNum int, resp *http.Response) time.Duration {
 	if c.retryLogHook != nil {
 		c.retryLogHook(attemptNum, resp)
 	}
 
 	// Use the rate limit backoff function when we are rate limited.
 	if resp != nil && resp.StatusCode == 429 {
-		return rateLimitBackoff(min, max, resp)
+		return rateLimitBackoff(minimum, maximum, resp)
 	}
 
 	// Set custom duration's when we experience a service interruption.
-	min = 700 * time.Millisecond
-	max = 900 * time.Millisecond
+	minimum = 700 * time.Millisecond
+	maximum = 900 * time.Millisecond
 
-	return retryablehttp.LinearJitterBackoff(min, max, attemptNum, resp)
+	return retryablehttp.LinearJitterBackoff(minimum, maximum, attemptNum, resp)
 }
 
 // rateLimitBackoff provides a callback for Client.Backoff which will use the
 // X-RateLimit_Reset header to determine the time to wait. We add some jitter
 // to prevent a thundering herd.
 //
-// min and max are mainly used for bounding the jitter that will be added to
+// minimum and maximum are mainly used for bounding the jitter that will be added to
 // the reset time retrieved from the headers. But if the final wait time is
-// less than min, min will be used instead.
-func rateLimitBackoff(min, max time.Duration, resp *http.Response) time.Duration {
+// less than minimum, minimum will be used instead.
+func rateLimitBackoff(minimum, maximum time.Duration, resp *http.Response) time.Duration {
 	// rnd is used to generate pseudo-random numbers.
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	// First create some jitter bounded by the min and max durations.
-	jitter := time.Duration(rnd.Float64() * float64(max-min))
+	jitter := time.Duration(rnd.Float64() * float64(maximum-minimum))
 
 	if resp != nil && resp.Header.Get(_headerRateReset) != "" {
 		v := resp.Header.Get(_headerRateReset)
@@ -655,12 +655,12 @@ func rateLimitBackoff(min, max time.Duration, resp *http.Response) time.Duration
 			log.Fatal(err)
 		}
 		// Only update min if the given time to wait is longer
-		if reset > 0 && time.Duration(reset*1e9) > min {
-			min = time.Duration(reset * 1e9)
+		if reset > 0 && time.Duration(reset*1e9) > minimum {
+			minimum = time.Duration(reset * 1e9)
 		}
 	}
 
-	return min + jitter
+	return minimum + jitter
 }
 
 type rawAPIMetadata struct {
@@ -857,11 +857,10 @@ func unmarshalResponse(responseBody io.Reader, model interface{}) error {
 
 	// Try to get the Items and Pagination struct fields.
 	items := dst.FieldByName("Items")
-	pagination := dst.FieldByName("Pagination")
 
 	// Unmarshal a single value if model does not contain the
 	// Items and Pagination struct fields.
-	if !items.IsValid() || !pagination.IsValid() {
+	if !items.IsValid() {
 		return jsonapi.UnmarshalPayload(responseBody, model)
 	}
 
@@ -892,15 +891,25 @@ func unmarshalResponse(responseBody io.Reader, model interface{}) error {
 	// Pointer-swap the result.
 	items.Set(result)
 
+	pagination := dst.FieldByName("Pagination")
+	paginationWithoutTotals := dst.FieldByName("PaginationNextPrev")
+
 	// As we are getting a list of values, we need to decode
 	// the pagination details out of the response body.
-	p, err := parsePagination(body)
-	if err != nil {
-		return err
-	}
-
 	// Pointer-swap the decoded pagination details.
-	pagination.Set(reflect.ValueOf(p))
+	if paginationWithoutTotals.IsValid() {
+		p, err := parsePaginationWithoutTotal(body)
+		if err != nil {
+			return err
+		}
+		paginationWithoutTotals.Set(reflect.ValueOf(p))
+	} else if pagination.IsValid() {
+		p, err := parsePagination(body)
+		if err != nil {
+			return err
+		}
+		pagination.Set(reflect.ValueOf(p))
+	}
 
 	return nil
 }
@@ -915,13 +924,35 @@ type ListOptions struct {
 	PageSize int `url:"page[size],omitempty"`
 }
 
-// Pagination is used to return the pagination details of an API request.
+// PaginationNextPrev is used to return the pagination details of an API request.
+type PaginationNextPrev struct {
+	CurrentPage  int `json:"current-page"`
+	PreviousPage int `json:"prev-page"`
+	NextPage     int `json:"next-page"`
+}
+
+// Pagination is used to return the pagination details of an API request including TotalCount.
 type Pagination struct {
 	CurrentPage  int `json:"current-page"`
 	PreviousPage int `json:"prev-page"`
 	NextPage     int `json:"next-page"`
-	TotalPages   int `json:"total-pages"`
 	TotalCount   int `json:"total-count"`
+	TotalPages   int `json:"total-pages"`
+}
+
+func parsePaginationWithoutTotal(body io.Reader) (*PaginationNextPrev, error) {
+	var raw struct {
+		Meta struct {
+			Pagination PaginationNextPrev `jsonapi:"pagination"`
+		} `jsonapi:"meta"`
+	}
+
+	// JSON decode the raw response.
+	if err := json.NewDecoder(body).Decode(&raw); err != nil {
+		return &PaginationNextPrev{}, err
+	}
+
+	return &raw.Meta.Pagination, nil
 }
 
 func parsePagination(body io.Reader) (*Pagination, error) {
@@ -956,7 +987,7 @@ func checkResponseCode(r *http.Response) error {
 			return err
 		}
 
-		if errorPayloadContains(errs, "Invalid include parameter") {
+		if errorPayloadContains(errs, "include parameter") {
 			return ErrInvalidIncludeValue
 		}
 		return errors.New(strings.Join(errs, "\n"))

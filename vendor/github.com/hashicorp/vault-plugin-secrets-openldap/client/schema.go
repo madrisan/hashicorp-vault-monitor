@@ -31,17 +31,26 @@ func ValidSchema(schema string) bool {
 // GetSchemaFieldRegistry type switches field registries depending on the configured schema.
 // For example, IBM RACF has a custom LDAP schema so the password is stored in a different
 // attribute.
-func GetSchemaFieldRegistry(schema string, newPassword string) (map[*Field][]string, error) {
-	switch schema {
+func GetSchemaFieldRegistry(cfg *Config, newPassword string) (map[*Field][]string, error) {
+	switch cfg.Schema {
+
 	case SchemaOpenLDAP:
 		fields := map[*Field][]string{FieldRegistry.UserPassword: {newPassword}}
 		return fields, nil
+
 	case SchemaRACF:
-		fields := map[*Field][]string{
-			FieldRegistry.RACFPassword:   {newPassword},
-			FieldRegistry.RACFAttributes: {"noexpired"},
+		fields := map[*Field][]string{}
+		// Password and password phrase management are mutually exclusive
+		// operations. When the system is configured to manage one, it will not
+		// modify the other.
+		if cfg.CredentialType == CredentialTypePhrase {
+			fields[FieldRegistry.RACFPassphrase] = []string{newPassword}
+		} else {
+			fields[FieldRegistry.RACFPassword] = []string{newPassword}
 		}
+		fields[FieldRegistry.RACFAttributes] = []string{"noexpired"}
 		return fields, nil
+
 	case SchemaAD:
 		pwdEncoded, err := formatPassword(newPassword)
 		if err != nil {
@@ -49,8 +58,9 @@ func GetSchemaFieldRegistry(schema string, newPassword string) (map[*Field][]str
 		}
 		fields := map[*Field][]string{FieldRegistry.UnicodePassword: {pwdEncoded}}
 		return fields, nil
+
 	default:
-		return nil, fmt.Errorf("configured schema %s not valid", schema)
+		return nil, fmt.Errorf("configured schema %s not valid", cfg.Schema)
 	}
 }
 

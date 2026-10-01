@@ -36,6 +36,7 @@ type jsonBucketSettings struct {
 	CompressionMode                   string `json:"compressionMode"`
 	MinimumDurabilityLevel            string `json:"durabilityMinLevel"`
 	StorageBackend                    string `json:"storageBackend"`
+	NumVBuckets                       uint16 `json:"numVBuckets"`
 	HistoryRetentionCollectionDefault *bool  `json:"historyRetentionCollectionDefault"`
 	HistoryRetentionBytes             uint64 `json:"historyRetentionBytes"`
 	HistoryRetentionSeconds           int    `json:"historyRetentionSeconds"`
@@ -53,6 +54,7 @@ func (bs *BucketSettings) fromData(data jsonBucketSettings) error {
 	bs.CompressionMode = CompressionMode(data.CompressionMode)
 	bs.MinimumDurabilityLevel = durabilityLevelFromManagementAPI(data.MinimumDurabilityLevel)
 	bs.StorageBackend = StorageBackend(data.StorageBackend)
+	bs.NumVBuckets = data.NumVBuckets
 	bs.HistoryRetentionBytes = data.HistoryRetentionBytes
 	bs.HistoryRetentionDuration = time.Duration(data.HistoryRetentionSeconds) * time.Second
 
@@ -112,7 +114,6 @@ func (bm *bucketManagementProviderCore) tryParseErrorMessage(req *mgmtRequest, r
 		return makeGenericMgmtError(errors.New(string(b)), req, resp, string(b))
 	}
 
-	var bodyErr error
 	var firstErr string
 	for _, err := range mgrErr.Errors {
 		firstErr = strings.ToLower(err)
@@ -120,12 +121,12 @@ func (bm *bucketManagementProviderCore) tryParseErrorMessage(req *mgmtRequest, r
 	}
 
 	if strings.Contains(firstErr, "bucket with given name already exists") {
-		bodyErr = ErrBucketExists
-	} else {
-		bodyErr = errors.New(firstErr)
+		return makeGenericMgmtError(ErrBucketExists, req, resp, string(b))
 	}
-
-	return makeGenericMgmtError(bodyErr, req, resp, string(b))
+	if resp.StatusCode == 400 {
+		return makeGenericMgmtError(ErrInvalidArgument, req, resp, string(b))
+	}
+	return makeGenericMgmtError(errors.New(firstErr), req, resp, string(b))
 }
 
 // Flush doesn't use the same body format as anything else...
@@ -526,6 +527,10 @@ func (bm *bucketManagementProviderCore) settingsToPostData(settings *BucketSetti
 
 	if settings.StorageBackend != "" {
 		posts.Add("storageBackend", string(settings.StorageBackend))
+	}
+
+	if settings.NumVBuckets > 0 {
+		posts.Add("numVBuckets", fmt.Sprintf("%d", settings.NumVBuckets))
 	}
 
 	if settings.HistoryRetentionCollectionDefault != HistoryRetentionCollectionDefaultUnset {

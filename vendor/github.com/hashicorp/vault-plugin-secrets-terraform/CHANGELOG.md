@@ -1,7 +1,19 @@
-## Unreleased
+## 0.12.0
+### Jun 6, 2025
+IMPROVEMENTS:
+* Updated dependencies:
+  * go 1.23.6 -> 1.24.3
+  * `github.com/hashicorp/go-tfe` v1.78.0 -> v1.81.0
+  * `github.com/hashicorp/vault/api` v1.14.0 -> v1.16.0
+  * `github.com/hashicorp/vault/sdk` v0.13.0 -> v0.17.0
+
+FEATURES:
+* Added optional description for user token roles to provide a description in HCPTF UI: https://github.com/hashicorp/vault-plugin-secrets-terraform/pull/84
+
+* Added support for HCP TF multiple team tokens. Introduced new optional parameter `credential_type` that can be used with value `team` to issue multiple team tokens. Tokens can optionally have a ttl and max_ttl that is respected via normal lease operations as well as Expired by HCP TF API at their expected time: https://github.com/hashicorp/vault-plugin-secrets-terraform/pull/89
 
 ## 0.11.0
-### FEb 7, 2025
+### Feb 7, 2025
 IMPROVEMENTS:
 * Updated dependencies: https://github.com/hashicorp/vault-plugin-secrets-terraform/pull/79
 

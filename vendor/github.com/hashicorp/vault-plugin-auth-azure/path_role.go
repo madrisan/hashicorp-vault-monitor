@@ -151,7 +151,7 @@ type azureRole struct {
 }
 
 // role takes a storage backend and the name and returns the role's storage
-// entryÍ
+// entry
 func (b *azureAuthBackend) role(ctx context.Context, s logical.Storage, name string) (*azureRole, error) {
 	raw, err := s.Get(ctx, "role/"+strings.ToLower(name))
 	if err != nil {

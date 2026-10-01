@@ -1,5 +1,18 @@
 ## Unreleased
 
+## v0.7.0
+### May 28, 2025
+
+IMPROVEMENTS:
+* Bump Go version to 1.24.3
+* Updated dependencies:
+  * `github.com/aws/aws-sdk-go` v1.55.6 -> v1.55.7
+  * `github.com/hashicorp/vault/sdk` v0.15.0 -> v0.17.0
+  * `golang.org/x/crypto` v0.32.0 -> v0.36.0
+  * `golang.org/x/net` v0.34.0 -> v0.38.0
+  * `golang.org/x/sys` v0.29.0 -> v0.31.0
+  * `golang.org/x/text` v0.21.0 -> v0.23.0
+
 ## v0.6.0
 ### Feb 12, 2025
 

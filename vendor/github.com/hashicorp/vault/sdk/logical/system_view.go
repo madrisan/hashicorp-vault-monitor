@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package logical
@@ -102,15 +102,29 @@ type SystemView interface {
 	// GenerateIdentityToken returns an identity token for the requesting plugin.
 	GenerateIdentityToken(ctx context.Context, req *pluginutil.IdentityTokenRequest) (*pluginutil.IdentityTokenResponse, error)
 
+	// GetRotationInformation gets rotation information from the system about an established rotation job.
+	GetRotationInformation(ctx context.Context, req *rotation.RotationInfoRequest) (*rotation.RotationInfoResponse, error)
+
 	// RegisterRotationJob returns a rotation ID after registering a
 	// rotation job for the requesting plugin.
 	// NOTE: This method is intended for use only by HashiCorp Vault Enterprise plugins.
 	RegisterRotationJob(ctx context.Context, req *rotation.RotationJobConfigureRequest) (rotationID string, err error)
 
+	// RegisterRotationJobWithResponse returns registers a rotation job for the requesting plugin
+	// and returns the full RotationInfo response.
+	// NOTE: This method is intended for use only by HashiCorp Vault Enterprise plugins
+	RegisterRotationJobWithResponse(ctx context.Context, req *rotation.RotationJobConfigureRequest) (*rotation.RotationInfo, error)
+
 	// DeregisterRotationJob returns any errors in de-registering a
 	// credential from the Rotation Manager.
 	// NOTE: This method is intended for use only by HashiCorp Vault Enterprise plugins.
 	DeregisterRotationJob(ctx context.Context, req *rotation.RotationJobDeregisterRequest) error
+
+	// ExtractVerifyPlugin extracts and verifies the plugin artifact
+	DownloadExtractVerifyPlugin(ctx context.Context, plugin *pluginutil.PluginRunner) error
+
+	// GetConsumptionBillingManager returns the consumption billing manager
+	GetConsumptionBillingManager() ConsumptionBillingManager
 }
 
 type PasswordPolicy interface {
@@ -298,10 +312,37 @@ func (d StaticSystemView) APILockShouldBlockRequest() (bool, error) {
 	return d.APILockShouldBlockRequestVal, nil
 }
 
-func (d StaticSystemView) RegisterRotationJob(_ context.Context, _ *rotation.RotationJobConfigureRequest) (rotationID string, err error) {
+func (d StaticSystemView) GetRotationInformation(ctx context.Context, req *rotation.RotationInfoRequest) (*rotation.RotationInfoResponse, error) {
+	return nil, errors.New("GetRotationInformation is not implemented in StaticSystemView")
+}
+
+func (d StaticSystemView) RegisterRotationJob(_ context.Context, _ *rotation.RotationJobConfigureRequest) (string, error) {
 	return "", errors.New("RegisterRotationJob is not implemented in StaticSystemView")
+}
+
+func (d StaticSystemView) RegisterRotationJobWithResponse(_ context.Context, _ *rotation.RotationJobConfigureRequest) (*rotation.RotationInfo, error) {
+	return nil, errors.New("RegisterRotationJob is not implemented in StaticSystemView")
 }
 
 func (d StaticSystemView) DeregisterRotationJob(_ context.Context, _ *rotation.RotationJobDeregisterRequest) (err error) {
 	return errors.New("DeregisterRotationJob is not implemented in StaticSystemView")
+}
+
+func (d StaticSystemView) DownloadExtractVerifyPlugin(_ context.Context, _ *pluginutil.PluginRunner) error {
+	return errors.New("DownloadExtractVerifyPlugin is not implemented in StaticSystemView")
+}
+
+func (d StaticSystemView) GetConsumptionBillingManager() ConsumptionBillingManager {
+	return nil
+}
+
+// PluginLicenseUtil defines the functions needed to request License and PluginEnv
+// by the plugin licensing under github.com/hashicorp/vault-licensing
+// This only should be used by the plugin to get the license and plugin environment
+type PluginLicenseUtil interface {
+	// License returns the raw license of the running Vault instance
+	License() (string, error)
+
+	// PluginEnv returns Vault environment information used by plugins
+	PluginEnv(context.Context) (*PluginEnvironment, error)
 }

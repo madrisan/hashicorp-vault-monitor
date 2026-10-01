@@ -34,7 +34,6 @@ type transactionAttempt struct {
 	enableNonFatalGets        bool
 	enableParallelUnstaging   bool
 	enableExplicitATRs        bool
-	enableMutationCaching     bool
 	unstagingParallelismLimit int
 	atrLocation               TransactionATRLocation
 	bucketAgentProvider       TransactionsBucketAgentProviderFn
@@ -205,6 +204,7 @@ func (t *transactionAttempt) GetMutations() []TransactionStagedMutation {
 			Key:            mutation.Key,
 			Cas:            mutation.Cas,
 			Staged:         mutation.Staged,
+			OperationID:    mutation.OperationID,
 		}
 	}
 

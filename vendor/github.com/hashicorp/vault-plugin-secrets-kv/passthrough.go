@@ -41,9 +41,8 @@ func LeaseSwitchedPassthroughBackendFactory(ctx context.Context, conf *logical.B
 		Help:        strings.TrimSpace(passthroughHelp),
 
 		PathsSpecial: &logical.Paths{
-			SealWrapStorage: []string{
-				"*",
-			},
+			SealWrapStorage:   []string{"*"},
+			AllowSnapshotRead: []string{"*"},
 		},
 
 		Paths: []*framework.Path{
@@ -117,6 +116,17 @@ func LeaseSwitchedPassthroughBackendFactory(ctx context.Context, conf *logical.B
 						Callback: b.handleList(),
 						DisplayAttrs: &framework.DisplayAttributes{
 							OperationVerb: "list",
+						},
+					},
+					logical.RecoverOperation: &framework.PathOperation{
+						Callback: b.handleWrite(),
+						DisplayAttrs: &framework.DisplayAttributes{
+							OperationVerb: "recover",
+						},
+						Responses: map[int][]framework.Response{
+							http.StatusNoContent: {{
+								Description: http.StatusText(http.StatusNoContent),
+							}},
 						},
 					},
 				},
@@ -196,8 +206,12 @@ func (b *PassthroughBackend) handleReadOrRenew() framework.OperationFunc {
 			return nil, fmt.Errorf("json decoding failed: %w", err)
 		}
 
+		// Reading from a loaded snapshot should not generate a lease
+		// Only set the secret as
+		renewable := b.generateLeases && !req.IsSnapshotReadOrList()
+
 		var resp *logical.Response
-		if b.generateLeases {
+		if renewable {
 			// Generate the response
 			resp = b.Secret("kv").Response(rawData, nil)
 			resp.Secret.Renewable = false
@@ -229,12 +243,14 @@ func (b *PassthroughBackend) handleReadOrRenew() framework.OperationFunc {
 				ttlDuration = dur
 			}
 
-			if b.generateLeases {
+			if renewable {
 				resp.Secret.Renewable = true
 			}
 		}
 
 		resp.Secret.TTL = ttlDuration
+
+		recordKvObservation(ctx, b.Backend, req, ObservationTypeKVv1SecretRead)
 
 		return resp, nil
 	}
@@ -267,6 +283,7 @@ func (b *PassthroughBackend) handleWrite() framework.OperationFunc {
 		}
 
 		kvEvent(ctx, b.Backend, "write", req.Path, req.Path, true, 1)
+		recordKvObservation(ctx, b.Backend, req, ObservationTypeKVv1SecretWrite)
 
 		return nil, nil
 	}
@@ -280,6 +297,7 @@ func (b *PassthroughBackend) handleDelete() framework.OperationFunc {
 		}
 
 		kvEvent(ctx, b.Backend, "delete", req.Path, "", true, 1)
+		recordKvObservation(ctx, b.Backend, req, ObservationTypeKVv1SecretDelete)
 
 		return nil, nil
 	}

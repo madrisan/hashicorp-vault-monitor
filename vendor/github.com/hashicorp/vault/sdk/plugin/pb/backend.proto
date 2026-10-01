@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 syntax = "proto3";
@@ -166,6 +166,15 @@ message Request {
   // RequiresSnapshotID will be present when the request is a list, read, or
   // recover from snapshot operation
   string requires_snapshot_id = 21;
+
+  // RecoverSourcePath is the path where a recover request should read the data
+  // from. This can be empty if the request is not a recover request, or if the
+  // request is a recover request where the source path is the same as the
+  // destination path
+  string recover_source_path = 22;
+
+  // RotationInfo returned by RM to plugins to maintain rotation state
+  RotationInfo rotation_info = 23;
 }
 
 message Auth {
@@ -393,6 +402,7 @@ message HandleRequestArgs {
 message HandleRequestReply {
   Response response = 1;
   ProtoError err = 2;
+  WALIndex walIndex = 3;
 }
 
 // InitializeArgs is the args for Initialize method.
@@ -518,8 +528,14 @@ message StoragePutArgs {
   StorageEntry entry = 1;
 }
 
+message WALIndex {
+  uint64 local_index = 1;
+  uint64 replicated_index = 2;
+}
+
 message StoragePutReply {
   string err = 1;
+  WALIndex walIndex = 2;
 }
 
 message StorageDeleteArgs {
@@ -528,6 +544,7 @@ message StorageDeleteArgs {
 
 message StorageDeleteReply {
   string err = 1;
+  WALIndex walIndex = 2;
 }
 
 // Storage is the way that plugins are able read/write data. Plugins should
@@ -617,8 +634,29 @@ message GenerateIdentityTokenResponse {
   int64 ttl = 2;
 }
 
+message RotationInfoRequest {
+  string mount_path = 1;
+}
+
+message RotationInfoReply {
+  int64 issue_time = 1;
+  int64 expire_time = 2;
+  int64 ttl = 3;
+}
+
+message RotationInfo {
+  string rotation_id = 1;
+  int64 next_vault_rotation = 2;
+  int64 last_vault_rotation = 3;
+}
+
 message RegisterRotationJobRequest {
   RotationJobInput job = 1;
+}
+
+message RegisterRotationJobWithResponseReply {
+  RotationInfo info = 1;
+  string err = 2;
 }
 
 message RegisterRotationJobResponse {
@@ -633,6 +671,8 @@ message RotationJobInput {
   string rotation_schedule = 4;
   int64 rotation_window = 5;
   int64 rotation_period = 6;
+  string rotation_policy = 7;
+  int64 migrated_legacy_next_rotation_time = 8;
 }
 
 message DeregisterRotationRequestInput {
@@ -703,8 +743,14 @@ service SystemView {
   // GenerateIdentityToken returns an identity token for the requesting plugin.
   rpc GenerateIdentityToken(GenerateIdentityTokenRequest) returns (GenerateIdentityTokenResponse);
 
+  // GetRotationInformation returns the time remaining in a rotation job for the requested credential.
+  rpc GetRotationInformation(RotationInfoRequest) returns (RotationInfoReply);
+
   // RegisterRotationJob returns a rotation ID for the requested plugin credential.
   rpc RegisterRotationJob(RegisterRotationJobRequest) returns (RegisterRotationJobResponse);
+
+  // RegisterRotationJob returns the rotation info for the requested plugin credential.
+  rpc RegisterRotationJobWithResponse(RegisterRotationJobRequest) returns (RegisterRotationJobWithResponseReply);
 
   // DeregisterRotationJob returns any errors in de-registering a credential from the Rotation Manager.
   rpc DeregisterRotationJob(DeregisterRotationJobRequest) returns (Empty);

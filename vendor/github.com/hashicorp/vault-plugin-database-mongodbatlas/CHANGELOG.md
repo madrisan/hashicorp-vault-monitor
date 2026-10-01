@@ -1,5 +1,13 @@
 ## Unreleased
 
+## v0.15.0
+IMPROVEMENTS:
+* Bump Go version to 1.24.3
+* Updated dependencies [[GH-81]](https://github.com/hashicorp/vault-plugin-database-mongodbatlas/pull/81):
+  * `github.com/hashicorp/vault/sdk` v0.15.0 -> v0.17.0
+  * `go.mongodb.org/atlas` v0.37.0 -> v0.38.0
+  * `go.mongodb.org/mongo-driver` v1.17.2 -> v1.17.3
+
 ## v0.14.0
 
 IMPROVEMENTS:

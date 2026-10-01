@@ -1,5 +1,19 @@
 ## Unreleased
 
+## v0.21.0 (Jun 3rd, 2025)
+* Updated dependencies:
+  * Go version: 1.23.6 -> 1.24.3
+  * `cloud.google.com/go/kms` v1.20.1 -> v1.22.0
+  * `github.com/hashicorp/vault/api` v1.15.0 -> v1.16.0
+  * `github.com/hashicorp/vault/sdk` v0.14.0 -> v0.17.0
+  * `golang.org/x/oauth2` v0.23.0 -> v0.30.0
+  * `google.golang.org/api` v0.204.0 -> v0.235.0
+  * `google.golang.org/genproto` v0.0.0-20241021214115-324edc3d5d38 -> v0.0.0-20250528174236-200df99c418a
+  * `google.golang.org/grpc` v1.67.1 -> v1.72.2
+
+## v0.20.0 (Feb 13th, 2025)
+* Go version: 1.22.3 -> 1.23.6
+
 ## v0.19.0 (Feb 12th, 2025)
 * Updated dependencies:
   * https://github.com/hashicorp/vault-plugin-secrets-gcpkms/pull/58

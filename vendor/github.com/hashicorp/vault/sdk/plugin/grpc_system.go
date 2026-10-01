@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package plugin
@@ -34,6 +34,11 @@ var _ logical.SystemView = &gRPCSystemViewClient{}
 
 type gRPCSystemViewClient struct {
 	client pb.SystemViewClient
+}
+
+func (s *gRPCSystemViewClient) GetConsumptionBillingManager() logical.ConsumptionBillingManager {
+	// Not implemented on pluginbackend
+	return nil
 }
 
 func (s *gRPCSystemViewClient) DefaultLeaseTTL() time.Duration {
@@ -227,24 +232,55 @@ func (s *gRPCSystemViewClient) GenerateIdentityToken(ctx context.Context, req *p
 	}, nil
 }
 
-func (s *gRPCSystemViewClient) RegisterRotationJob(ctx context.Context, req *rotation.RotationJobConfigureRequest) (id string, retErr error) {
+func (s *gRPCSystemViewClient) GetRotationInformation(ctx context.Context, req *rotation.RotationInfoRequest) (*rotation.RotationInfoResponse, error) {
+	resp, err := s.client.GetRotationInformation(ctx, &pb.RotationInfoRequest{
+		MountPath: req.ReqPath,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &rotation.RotationInfoResponse{
+		NextVaultRotation: time.Unix(resp.ExpireTime, 0),
+		LastVaultRotation: time.Unix(resp.IssueTime, 0),
+		TTL:               resp.TTL,
+	}, nil
+}
+
+func (s *gRPCSystemViewClient) RegisterRotationJobWithResponse(ctx context.Context, req *rotation.RotationJobConfigureRequest) (*rotation.RotationInfo, error) {
 	cfgReq := &pb.RegisterRotationJobRequest{
 		Job: &pb.RotationJobInput{
-			Name:             req.Name,
-			MountPoint:       req.MountPoint,
-			Path:             req.ReqPath,
-			RotationSchedule: req.RotationSchedule,
+			Name:                           req.Name,
+			MountPoint:                     req.MountPoint,
+			Path:                           req.ReqPath,
+			RotationSchedule:               req.RotationSchedule,
+			RotationPolicy:                 req.RotationPolicy,
+			MigratedLegacyNextRotationTime: req.MigratedLegacyNextRotationTime.Unix(),
 
 			// on the side outbound from the plugin, we convert duration to seconds, so seconds get sent over the wire
 			RotationWindow: int64(req.RotationWindow.Seconds()),
 			RotationPeriod: int64(req.RotationPeriod.Seconds()),
 		},
 	}
-	resp, err := s.client.RegisterRotationJob(ctx, cfgReq)
+	resp, err := s.client.RegisterRotationJobWithResponse(ctx, cfgReq)
+	if err != nil {
+		return nil, err
+	}
+	return &rotation.RotationInfo{
+		RotationID: resp.Info.RotationID,
+		// ensure UTC location on conversion
+		NextVaultRotation: time.Unix(resp.Info.NextVaultRotation, 0).UTC(),
+		LastVaultRotation: time.Unix(resp.Info.LastVaultRotation, 0).UTC(),
+	}, nil
+}
+
+func (s *gRPCSystemViewClient) RegisterRotationJob(ctx context.Context, req *rotation.RotationJobConfigureRequest) (string, error) {
+	info, err := s.RegisterRotationJobWithResponse(ctx, req)
 	if err != nil {
 		return "", err
 	}
-	return resp.RotationID, nil
+
+	return info.RotationID, nil
 }
 
 func (s *gRPCSystemViewClient) DeregisterRotationJob(ctx context.Context, req *rotation.RotationJobDeregisterRequest) error {
@@ -464,6 +500,60 @@ func (s *gRPCSystemViewServer) GenerateIdentityToken(ctx context.Context, req *p
 	}, nil
 }
 
+func (s *gRPCSystemViewServer) GetRotationInformation(ctx context.Context, req *pb.RotationInfoRequest) (*pb.RotationInfoReply, error) {
+	if s.impl == nil {
+		return nil, errMissingSystemView
+	}
+
+	cfgReq := &rotation.RotationInfoRequest{
+		ReqPath: req.MountPath,
+	}
+
+	resp, err := s.impl.GetRotationInformation(ctx, cfgReq)
+	if err != nil {
+		return &pb.RotationInfoReply{}, status.Error(codes.Internal, err.Error())
+	}
+
+	return &pb.RotationInfoReply{
+		IssueTime:  resp.LastVaultRotation.Unix(),
+		ExpireTime: resp.NextVaultRotation.Unix(),
+		TTL:        resp.TTL,
+	}, nil
+}
+
+func (s *gRPCSystemViewServer) RegisterRotationJobWithResponse(ctx context.Context, req *pb.RegisterRotationJobRequest) (*pb.RegisterRotationJobWithResponseReply, error) {
+	if s.impl == nil {
+		return nil, errMissingSystemView
+	}
+
+	cfgReq := &rotation.RotationJobConfigureRequest{
+		Name:             req.Job.Name,
+		MountPoint:       req.Job.MountPoint,
+		ReqPath:          req.Job.Path,
+		RotationSchedule: req.Job.RotationSchedule,
+		RotationPolicy:   req.Job.RotationPolicy,
+		// on the side inbound to vault, we convert seconds back to time.Duration
+		// Note: this value is seconds (as per the outbound client call, despite being int64)
+		// The field is int64 because of gRPC reasons, not time.Duration reasons
+		RotationWindow:                 time.Duration(req.Job.RotationWindow) * time.Second,
+		RotationPeriod:                 time.Duration(req.Job.RotationPeriod) * time.Second,
+		MigratedLegacyNextRotationTime: time.Unix(req.Job.MigratedLegacyNextRotationTime, 0).UTC(),
+	}
+
+	resp, err := s.impl.RegisterRotationJobWithResponse(ctx, cfgReq)
+	if err != nil {
+		return &pb.RegisterRotationJobWithResponseReply{}, status.Error(codes.Internal, err.Error())
+	}
+
+	return &pb.RegisterRotationJobWithResponseReply{
+		Info: &pb.RotationInfo{
+			RotationID:        resp.RotationID,
+			NextVaultRotation: resp.NextVaultRotation.Unix(),
+			LastVaultRotation: resp.LastVaultRotation.Unix(),
+		},
+	}, nil
+}
+
 func (s *gRPCSystemViewServer) RegisterRotationJob(ctx context.Context, req *pb.RegisterRotationJobRequest) (*pb.RegisterRotationJobResponse, error) {
 	if s.impl == nil {
 		return nil, errMissingSystemView
@@ -474,11 +564,13 @@ func (s *gRPCSystemViewServer) RegisterRotationJob(ctx context.Context, req *pb.
 		MountPoint:       req.Job.MountPoint,
 		ReqPath:          req.Job.Path,
 		RotationSchedule: req.Job.RotationSchedule,
+		RotationPolicy:   req.Job.RotationPolicy,
 		// on the side inbound to vault, we convert seconds back to time.Duration
 		// Note: this value is seconds (as per the outbound client call, despite being int64)
 		// The field is int64 because of gRPC reasons, not time.Duration reasons
-		RotationWindow: time.Duration(req.Job.RotationWindow) * time.Second,
-		RotationPeriod: time.Duration(req.Job.RotationPeriod) * time.Second,
+		RotationWindow:                 time.Duration(req.Job.RotationWindow) * time.Second,
+		RotationPeriod:                 time.Duration(req.Job.RotationPeriod) * time.Second,
+		MigratedLegacyNextRotationTime: time.Unix(req.Job.MigratedLegacyNextRotationTime, 0).UTC(),
 	}
 
 	rotationID, err := s.impl.RegisterRotationJob(ctx, cfgReq)
@@ -507,4 +599,8 @@ func (s *gRPCSystemViewServer) DeregisterRotationJob(ctx context.Context, req *p
 	}
 
 	return &pb.Empty{}, nil
+}
+
+func (s *gRPCSystemViewClient) DownloadExtractVerifyPlugin(_ context.Context, _ *pluginutil.PluginRunner) error {
+	return fmt.Errorf("cannot call DownloadExtractVerifyPlugin from a plugin backend")
 }

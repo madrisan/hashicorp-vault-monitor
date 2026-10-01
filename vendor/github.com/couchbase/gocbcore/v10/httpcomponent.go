@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -28,6 +27,7 @@ type httpComponent struct {
 	muxer                *httpMux
 	userAgent            string
 	tracer               *tracerComponent
+	telemetry            *telemetryComponent
 	defaultRetryStrategy RetryStrategy
 
 	shutdownSig chan struct{}
@@ -46,12 +46,13 @@ type httpClientProps struct {
 	idleTimeout         time.Duration
 }
 
-func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, muxer *httpMux, tracer *tracerComponent) *httpComponent {
+func newHTTPComponent(props httpComponentProps, clientProps httpClientProps, muxer *httpMux, tracer *tracerComponent, telemetry *telemetryComponent) *httpComponent {
 	hc := &httpComponent{
 		muxer:                muxer,
 		userAgent:            props.UserAgent,
 		defaultRetryStrategy: props.DefaultRetryStrategy,
 		tracer:               tracer,
+		telemetry:            telemetry,
 		shutdownSig:          make(chan struct{}),
 	}
 
@@ -125,37 +126,44 @@ func (hc *httpComponent) DoHTTPRequest(req *HTTPRequest, cb DoHTTPRequestCallbac
 	return ireq, nil
 }
 
+type httpRequestState struct {
+	denylist              []string
+	start                 time.Time
+	lastAttemptStart      time.Time
+	endpoint              routeEndpoint
+	cancellationIsTimeout uint32
+}
+
 func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck bool) (*HTTPResponse, error) {
 	if req.Service == MemdService {
 		return nil, errInvalidService
 	}
 
-	// This creates a context that has a parent with no cancel function. As such WithCancel will not setup any
-	// extra go routines and we only need to call cancel on (non-timeout) failure.
+	state := &httpRequestState{
+		start: time.Now(),
+	}
+
+	// This creates a context that has a parent with no cancel function. As such WithCancel will not set up any
+	// extra go routines, and we only need to call cancel on (non-timeout) failure.
 	ctx := req.Context
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	ctx, ctxCancel := context.WithCancel(ctx)
 
-	// This is easy to do with a bool and defer than to ensure that we cancel after every error.
 	doneCh := make(chan struct{}, 1)
-	querySuccess := false
 	defer func() {
 		doneCh <- struct{}{}
-		if !querySuccess {
-			ctxCancel()
-		}
 	}()
 
-	start := time.Now()
-	var cancellationIsTimeout uint32
 	// Having no deadline is a legitimate case.
 	if !req.Deadline.IsZero() {
 		go func() {
 			select {
-			case <-time.After(req.Deadline.Sub(start)):
-				atomic.StoreUint32(&cancellationIsTimeout, 1)
+			case <-time.After(req.Deadline.Sub(state.start)):
+				// We use cancellationIsTimeout instead of a context with a deadline, as we want the timeout to only
+				// apply to the request-response part of the operation, not in the stream that we will return.
+				atomic.StoreUint32(&state.cancellationIsTimeout, 1)
 				ctxCancel()
 			case <-hc.shutdownSig:
 				ctxCancel()
@@ -173,143 +181,199 @@ func (hc *httpComponent) DoInternalHTTPRequest(req *httpRequest, skipConfigCheck
 	}
 
 	if !skipConfigCheck {
-		if err := hc.waitForConfig(ctx, req.IsIdempotent, &cancellationIsTimeout); err != nil {
+		if err := hc.waitForConfig(ctx, req.IsIdempotent, &state.cancellationIsTimeout); err != nil {
+			ctxCancel()
 			return nil, err
 		}
 	}
 
 	generator := newHTTPRequestGenerator(ctx, req, hc.userAgent)
 
-	var denylist []string
 	for {
-		endpoint := req.Endpoint
-		if endpoint == "" {
-			var err error
-			endpoint, err = hc.randomEndpoint(req.Service, denylist)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			err := hc.checkEndpointExists(req.Service, endpoint)
-			if err != nil {
-				return nil, err
-			}
-		}
-		var creds []UserPassPair
-		if req.Username == "" && req.Password == "" {
-			auth := hc.muxer.Auth()
-			if auth == nil {
-				// Shouldn't happen but if it does then probably better to not panic with a nil pointer.
-				return nil, errCliInternalError
-			}
-
-			var err error
-			creds, err = auth.Credentials(AuthCredsRequest{
-				Service:  req.Service,
-				Endpoint: endpoint,
-			})
-			if err != nil {
-				if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, start, endpoint, true); err != nil {
-					return nil, err
-				}
-				denylist = append(denylist, endpoint)
-
-				continue
-			}
-		}
-
-		hreq, err := generator.NewRequest(endpoint, creds)
+		resp, retry, err := hc.doHTTPRequestAttempt(req, generator, state)
 		if err != nil {
+			outcome := telemetryOutcomeError
+			if errors.Is(err, ErrTimeout) {
+				outcome = telemetryOutcomeTimedout
+			} else if errors.Is(err, ErrRequestCanceled) {
+				outcome = telemetryOutcomeCanceled
+			}
+			hc.recordTelemetry(state, req, outcome)
+			ctxCancel()
 			return nil, err
 		}
-
-		dSpan := hc.tracer.StartHTTPDispatchSpan(req, spanNameDispatchToServer)
-		logSchedf("Writing HTTP request to %s ID=%s", hreq.URL, req.UniqueID)
-		// we can't close the body of this response as it's long-lived beyond the function
-		hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
-		hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID, req.RetryAttempts())
-		if err != nil {
-			logDebugf("Received HTTP Response for ID=%s, errored: %v", req.UniqueID, err)
-
-			// We check for net errors first, an i/o timeout can satisfy the DeadlineExceeded check and then we'd end
-			// up returning an i/o timeout error to the user.
-			var retryReason RetryReason
-			if os.IsTimeout(err) {
-				retryReason = SocketNotAvailableRetryReason
-			} else if errors.Is(err, io.ErrUnexpectedEOF) {
-				retryReason = SocketCloseInFlightRetryReason
-			} else {
-				var netErr *net.OpError
-				if errors.As(err, &netErr) {
-					// We need to be care about what we consider not available, if the request has been written to the
-					// network then it's socket closed in flight. This isn't easy to figure out so err on the side of
-					// caution.
-					if netErr.Op == "dial" {
-						retryReason = SocketNotAvailableRetryReason
-					} else {
-						retryReason = SocketCloseInFlightRetryReason
-					}
-				} else {
-					var dnsErr *net.DNSError
-					if errors.As(err, &dnsErr) {
-						retryReason = SocketNotAvailableRetryReason
-					}
-				}
-			}
-
-			if retryReason != nil {
-				err := hc.maybeWait(req, retryReason, err, start, endpoint, false)
-				if err != nil {
-					return nil, err
-				}
-
-				continue
-			}
-
-			// Because we don't use the http request context itself to perform timeouts we need to do some translation
-			// of the error message here for better UX.
-			if errors.Is(err, context.Canceled) {
-				isTimeout := atomic.LoadUint32(&cancellationIsTimeout)
-				if isTimeout == 1 {
-					var base error
-					if req.IsIdempotent {
-						base = errUnambiguousTimeout
-					} else {
-						base = errAmbiguousTimeout
-					}
-
-					err = &TimeoutError{
-						InnerError:       base,
-						OperationID:      "http",
-						Opaque:           req.Identifier(),
-						TimeObserved:     time.Since(start),
-						RetryReasons:     req.retryReasons,
-						RetryAttempts:    req.retryCount,
-						LastDispatchedTo: endpoint,
-					}
-				} else {
-					err = errRequestCanceled
-				}
-			}
-
-			// If we've got to here then either the error is ours timeout/canceled or we don't know it.
-			return nil, err
+		if retry {
+			hc.recordTelemetry(state, req, telemetryOutcomeError)
+			continue
 		}
-		logSchedf("Received HTTP Response for ID=%s, status=%d", req.UniqueID, hresp.StatusCode)
+		hc.recordTelemetry(state, req, telemetryOutcomeSuccess)
 
-		hresp = wrapHttpResponse(hresp) // nolint: bodyclose
-
-		respOut := HTTPResponse{
-			Endpoint:      endpoint,
-			StatusCode:    hresp.StatusCode,
-			ContentLength: hresp.ContentLength,
-			Body:          hresp.Body,
-		}
-
-		querySuccess = true
-
-		return &respOut, nil
+		return resp, nil
 	}
+}
+
+func (hc *httpComponent) doHTTPRequestAttempt(req *httpRequest, generator *httpRequestGenerator, state *httpRequestState) (*HTTPResponse, bool, error) {
+	state.lastAttemptStart = time.Now()
+
+	state.endpoint = routeEndpoint{
+		Address:  req.Endpoint,
+		NodeUUID: req.NodeUUID,
+	}
+	if state.endpoint.Address == "" {
+		var err error
+		state.endpoint, err = hc.randomEndpoint(req.Service, state.denylist)
+		if err != nil {
+			return nil, false, err
+		}
+	} else {
+		err := hc.checkEndpointAddressExists(req.Service, state.endpoint.Address)
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	var creds []UserPassPair
+	if req.Username == "" && req.Password == "" {
+		auth := hc.muxer.Auth()
+		if auth == nil {
+			// Shouldn't happen but if it does then probably better to not panic with a nil pointer.
+			return nil, false, errCliInternalError
+		}
+
+		var err error
+		creds, err = auth.Credentials(AuthCredsRequest{
+			Service:  req.Service,
+			Endpoint: state.endpoint.Address,
+		})
+		if err != nil {
+			if err := hc.maybeWait(req, CredentialsFetchFailedRetryReason, err, state.start, state.endpoint.Address, true); err != nil {
+				return nil, false, err
+			}
+			state.denylist = append(state.denylist, state.endpoint.Address)
+
+			// Retry
+			return nil, true, nil
+		}
+	}
+
+	hreq, err := generator.NewRequest(state.endpoint.Address, creds)
+	if err != nil {
+		return nil, false, err
+	}
+
+	dSpan := hc.tracer.StartHTTPDispatchSpan(req, spanNameDispatchToServer)
+	logSchedf("Writing HTTP request to %s ID=%s", hreq.URL, req.UniqueID)
+	// we can't close the body of this response as it's long-lived beyond the function
+	hresp, err := hc.cli.Do(hreq) // nolint: bodyclose
+	hc.tracer.StopHTTPDispatchSpan(dSpan, hreq, req.UniqueID, req.RetryAttempts())
+	if err != nil {
+		logDebugf("Received HTTP Response for ID=%s, errored: %v", req.UniqueID, err)
+
+		// We check for net errors first, an i/o timeout can satisfy the DeadlineExceeded check and then we'd end
+		// up returning an i/o timeout error to the user.
+		var retryReason RetryReason
+		if os.IsTimeout(err) {
+			retryReason = SocketNotAvailableRetryReason
+		} else if errors.Is(err, io.ErrUnexpectedEOF) {
+			retryReason = SocketCloseInFlightRetryReason
+		} else {
+			var netErr *net.OpError
+			if errors.As(err, &netErr) {
+				// We need to be care about what we consider not available, if the request has been written to the
+				// network then it's socket closed in flight. This isn't easy to figure out so err on the side of
+				// caution.
+				if netErr.Op == "dial" {
+					retryReason = SocketNotAvailableRetryReason
+				} else {
+					retryReason = SocketCloseInFlightRetryReason
+				}
+			} else {
+				var dnsErr *net.DNSError
+				if errors.As(err, &dnsErr) {
+					retryReason = SocketNotAvailableRetryReason
+				}
+			}
+		}
+
+		if retryReason != nil {
+			err := hc.maybeWait(req, retryReason, err, state.start, state.endpoint.Address, false)
+			if err != nil {
+				return nil, false, err
+			}
+
+			// Retry
+			return nil, true, nil
+		}
+
+		// Because we don't use the http request context itself to perform timeouts we need to do some translation
+		// of the error message here for better UX.
+		if errors.Is(err, context.Canceled) {
+			isTimeout := atomic.LoadUint32(&state.cancellationIsTimeout)
+			if isTimeout == 1 {
+				var base error
+				if req.IsIdempotent {
+					base = errUnambiguousTimeout
+				} else {
+					base = errAmbiguousTimeout
+				}
+				err = &TimeoutError{
+					InnerError:       base,
+					OperationID:      "http",
+					Opaque:           req.Identifier(),
+					TimeObserved:     time.Since(state.start),
+					RetryReasons:     req.retryReasons,
+					RetryAttempts:    req.retryCount,
+					LastDispatchedTo: state.endpoint.Address,
+				}
+			} else {
+				err = errRequestCanceled
+			}
+		}
+
+		// If we've got to here then either the error is ours timeout/canceled or we don't know it.
+		return nil, false, err
+	}
+	logSchedf("Received HTTP Response for ID=%s, status=%d", req.UniqueID, hresp.StatusCode)
+
+	hresp = wrapHttpResponse(hresp) // nolint: bodyclose
+
+	respOut := HTTPResponse{
+		Endpoint:      state.endpoint.Address,
+		StatusCode:    hresp.StatusCode,
+		ContentLength: hresp.ContentLength,
+		Body:          hresp.Body,
+	}
+
+	return &respOut, false, nil
+}
+
+func (hc *httpComponent) recordTelemetry(state *httpRequestState, req *httpRequest, outcome telemetryOutcome) {
+	if hc.telemetry == nil {
+		return
+	}
+	switch req.Service {
+	case N1qlService, FtsService, CbasService, MgmtService, EventingService:
+		// We only report app telemetry metrics for these HTTP services
+		break
+	default:
+		return
+	}
+
+	var node, altNode string
+	if state.endpoint.CanonicalAddress != "" && state.endpoint.CanonicalAddress != state.endpoint.Address {
+		node = hostnameFromURI(state.endpoint.CanonicalAddress)
+		altNode = hostnameFromURI(state.endpoint.Address)
+	} else {
+		node = hostnameFromURI(state.endpoint.Address)
+	}
+
+	hc.telemetry.RecordOp(telemetryOperationAttributes{
+		node:     node,
+		altNode:  altNode,
+		nodeUUID: state.endpoint.NodeUUID,
+		duration: time.Since(state.lastAttemptStart),
+		outcome:  outcome,
+		service:  req.Service,
+	})
 }
 
 func (hc *httpComponent) waitForConfig(ctx context.Context, isIdempotent bool, cancellationIsTimeout *uint32) error {
@@ -345,8 +409,8 @@ func (hc *httpComponent) waitForConfig(ctx context.Context, isIdempotent bool, c
 	}
 }
 
-func (hc *httpComponent) randomEndpoint(service ServiceType, denylist []string) (string, error) {
-	var endpoint string
+func (hc *httpComponent) randomEndpoint(service ServiceType, denylist []string) (routeEndpoint, error) {
+	var endpoint routeEndpoint
 	var err error
 	switch service {
 	case MgmtService:
@@ -366,38 +430,30 @@ func (hc *httpComponent) randomEndpoint(service ServiceType, denylist []string) 
 	case BackupService:
 		endpoint, err = hc.getBackupEp(denylist)
 	}
-	if err != nil {
-		return "", err
-	}
-
-	return endpoint, nil
+	return endpoint, err
 }
 
-func (hc *httpComponent) checkEndpointExists(service ServiceType, endpoint string) error {
+func (hc *httpComponent) checkEndpointAddressExists(service ServiceType, address string) error {
 	var err error
 	switch service {
 	case MgmtService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.MgmtEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.MgmtEps())
 	case CapiService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.CapiEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.CapiEps())
 	case N1qlService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.N1qlEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.N1qlEps())
 	case FtsService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.FtsEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.FtsEps())
 	case CbasService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.CbasEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.CbasEps())
 	case EventingService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.EventingEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.EventingEps())
 	case GSIService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.GSIEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.GSIEps())
 	case BackupService:
-		err = hc.validateEndpoint(endpoint, hc.muxer.BackupEps())
+		err = hc.validateEndpointAddress(address, hc.muxer.BackupEps())
 	}
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, err error, start time.Time, endpoint string, returnOriginalOnTimeout bool) error {
@@ -440,42 +496,42 @@ func (hc *httpComponent) maybeWait(req *httpRequest, retryReason RetryReason, er
 	return nil
 }
 
-func (hc *httpComponent) getMgmtEp(denylist []string) (string, error) {
+func (hc *httpComponent) getMgmtEp(denylist []string) (routeEndpoint, error) {
 	endpoints, err := randFromServiceEndpoints(hc.muxer.MgmtEps(), denylist)
 	return endpoints, err
 }
 
-func (hc *httpComponent) getCapiEp(denylist []string) (string, error) {
+func (hc *httpComponent) getCapiEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.CapiEps(), denylist)
 }
 
-func (hc *httpComponent) getN1qlEp(denylist []string) (string, error) {
+func (hc *httpComponent) getN1qlEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.N1qlEps(), denylist)
 }
 
-func (hc *httpComponent) getFtsEp(denylist []string) (string, error) {
+func (hc *httpComponent) getFtsEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.FtsEps(), denylist)
 }
 
-func (hc *httpComponent) getCbasEp(denylist []string) (string, error) {
+func (hc *httpComponent) getCbasEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.CbasEps(), denylist)
 }
 
-func (hc *httpComponent) getEventingEp(denylist []string) (string, error) {
+func (hc *httpComponent) getEventingEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.EventingEps(), denylist)
 }
 
-func (hc *httpComponent) getGSIEp(denylist []string) (string, error) {
+func (hc *httpComponent) getGSIEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.GSIEps(), denylist)
 }
 
-func (hc *httpComponent) getBackupEp(denylist []string) (string, error) {
+func (hc *httpComponent) getBackupEp(denylist []string) (routeEndpoint, error) {
 	return randFromServiceEndpoints(hc.muxer.BackupEps(), denylist)
 }
 
-func (hc *httpComponent) validateEndpoint(endpoint string, endpoints []string) error {
+func (hc *httpComponent) validateEndpointAddress(endpointAddress string, endpoints []routeEndpoint) error {
 	for _, ep := range endpoints {
-		if ep == endpoint {
+		if ep.Address == endpointAddress {
 			return nil
 		}
 	}
@@ -483,7 +539,33 @@ func (hc *httpComponent) validateEndpoint(endpoint string, endpoints []string) e
 	return errInvalidServer
 }
 
-func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTLSConfig {
+func createTLSConfig(auth AuthProvider, cipherSuite []*tls.CipherSuite, caProvider func() *x509.CertPool) *dynTLSConfig {
+	var suites []uint16
+	if cipherSuite != nil {
+		suites = make([]uint16, len(cipherSuite))
+		for i, suite := range cipherSuite {
+			var s uint16
+			for _, suiteID := range tls.CipherSuites() {
+				if suite.Name == suiteID.Name {
+					s = suiteID.ID
+					break
+				}
+			}
+			for _, suiteID := range tls.InsecureCipherSuites() {
+				if suite.Name == suiteID.Name {
+					s = suiteID.ID
+					break
+				}
+			}
+
+			if s > 0 {
+				suites[i] = s
+			} else {
+				logWarnf("Unknown cipher suite %s, ignoring", suite.Name)
+			}
+		}
+	}
+
 	return &dynTLSConfig{
 		BaseConfig: &tls.Config{
 			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
@@ -498,7 +580,8 @@ func createTLSConfig(auth AuthProvider, caProvider func() *x509.CertPool) *dynTL
 
 				return cert, nil
 			},
-			MinVersion: tls.VersionTLS12,
+			MinVersion:   tls.VersionTLS12,
+			CipherSuites: suites,
 		},
 		Provider: caProvider,
 	}
@@ -515,11 +598,11 @@ func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost, max
 	httpTransport := &http.Transport{
 		ForceAttemptHTTP2: true,
 
-		Dial: func(network, addr string) (net.Conn, error) {
-			return httpDialer.Dial(network, addr)
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return httpDialer.DialContext(ctx, network, addr)
 		},
-		DialTLS: func(network, addr string) (net.Conn, error) {
-			tcpConn, err := httpDialer.Dial(network, addr)
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			tcpConn, err := httpDialer.DialContext(ctx, network, addr)
 			if err != nil {
 				return nil, err
 			}
@@ -571,8 +654,8 @@ func (hc *httpComponent) createHTTPClient(maxIdleConns, maxIdleConnsPerHost, max
 }
 
 /* #nosec G404 */
-func randFromServiceEndpoints(endpoints []string, denylist []string) (string, error) {
-	var allowList []string
+func randFromServiceEndpoints(endpoints []routeEndpoint, denylist []string) (routeEndpoint, error) {
+	var allowList []routeEndpoint
 	for _, ep := range endpoints {
 		if inDenyList(ep, denylist) {
 			continue
@@ -580,15 +663,15 @@ func randFromServiceEndpoints(endpoints []string, denylist []string) (string, er
 		allowList = append(allowList, ep)
 	}
 	if len(allowList) == 0 {
-		return "", errServiceNotAvailable
+		return routeEndpoint{}, errServiceNotAvailable
 	}
 
 	return allowList[rand.Intn(len(allowList))], nil
 }
 
-func inDenyList(ep string, denylist []string) bool {
+func inDenyList(ep routeEndpoint, denylist []string) bool {
 	for _, b := range denylist {
-		if ep == b {
+		if ep.Address == b {
 			return true
 		}
 	}
@@ -688,7 +771,7 @@ func (hrg *httpRequestGenerator) NewRequest(endpoint string, creds []UserPassPai
 		}
 	}
 
-	hreq.Body = ioutil.NopCloser(bytes.NewReader(body))
+	hreq.Body = io.NopCloser(bytes.NewReader(body))
 
 	return hreq, nil
 }

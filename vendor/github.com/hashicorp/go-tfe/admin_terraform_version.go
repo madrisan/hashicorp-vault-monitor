@@ -49,24 +49,25 @@ type adminTerraformVersions struct {
 
 // AdminTerraformVersion represents a Terraform Version
 type AdminTerraformVersion struct {
-	ID               string    `jsonapi:"primary,terraform-versions"`
-	Version          string    `jsonapi:"attr,version"`
-	URL              string    `jsonapi:"attr,url"`
-	Sha              string    `jsonapi:"attr,sha"`
-	Deprecated       bool      `jsonapi:"attr,deprecated"`
-	DeprecatedReason *string   `jsonapi:"attr,deprecated-reason,omitempty"`
-	Official         bool      `jsonapi:"attr,official"`
-	Enabled          bool      `jsonapi:"attr,enabled"`
-	Beta             bool      `jsonapi:"attr,beta"`
-	Usage            int       `jsonapi:"attr,usage"`
-	CreatedAt        time.Time `jsonapi:"attr,created-at,iso8601"`
+	ID               string                     `jsonapi:"primary,terraform-versions"`
+	Version          string                     `jsonapi:"attr,version"`
+	URL              string                     `jsonapi:"attr,url,omitempty"`
+	Sha              string                     `jsonapi:"attr,sha,omitempty"`
+	Deprecated       bool                       `jsonapi:"attr,deprecated"`
+	DeprecatedReason *string                    `jsonapi:"attr,deprecated-reason,omitempty"`
+	Official         bool                       `jsonapi:"attr,official"`
+	Enabled          bool                       `jsonapi:"attr,enabled"`
+	Beta             bool                       `jsonapi:"attr,beta"`
+	Usage            int                        `jsonapi:"attr,usage"`
+	CreatedAt        time.Time                  `jsonapi:"attr,created-at,iso8601"`
+	Archs            []*ToolVersionArchitecture `jsonapi:"attr,archs,omitempty"`
 }
 
-type ToolVersionArchitectureOptions struct {
-	URL  string `json:"url"`
-	Sha  string `json:"sha"`
-	OS   string `json:"os"`
-	Arch string `json:"arch"`
+type ToolVersionArchitecture struct {
+	URL  string `jsonapi:"attr,url"`
+	Sha  string `jsonapi:"attr,sha"`
+	OS   string `jsonapi:"attr,os"`
+	Arch string `jsonapi:"attr,arch"`
 }
 
 // AdminTerraformVersionsListOptions represents the options for listing
@@ -84,30 +85,31 @@ type AdminTerraformVersionsListOptions struct {
 // AdminTerraformVersionCreateOptions for creating a terraform version.
 // https://developer.hashicorp.com/terraform/enterprise/api-docs/admin/terraform-versions#request-body
 type AdminTerraformVersionCreateOptions struct {
-	Type             string                            `jsonapi:"primary,terraform-versions"`
-	Version          *string                           `jsonapi:"attr,version"` // Required
-	URL              *string                           `jsonapi:"attr,url"`     // Required
-	Sha              *string                           `jsonapi:"attr,sha"`     // Required
-	Official         *bool                             `jsonapi:"attr,official,omitempty"`
-	Deprecated       *bool                             `jsonapi:"attr,deprecated,omitempty"`
-	DeprecatedReason *string                           `jsonapi:"attr,deprecated-reason,omitempty"`
-	Enabled          *bool                             `jsonapi:"attr,enabled,omitempty"`
-	Beta             *bool                             `jsonapi:"attr,beta,omitempty"`
-	Archs            []*ToolVersionArchitectureOptions `jsonapi:"attr,archs,omitempty"`
+	Type             string                     `jsonapi:"primary,terraform-versions"`
+	Version          *string                    `jsonapi:"attr,version"` // Required
+	URL              *string                    `jsonapi:"attr,url,omitempty"`
+	Sha              *string                    `jsonapi:"attr,sha,omitempty"`
+	Official         *bool                      `jsonapi:"attr,official,omitempty"`
+	Deprecated       *bool                      `jsonapi:"attr,deprecated,omitempty"`
+	DeprecatedReason *string                    `jsonapi:"attr,deprecated-reason,omitempty"`
+	Enabled          *bool                      `jsonapi:"attr,enabled,omitempty"`
+	Beta             *bool                      `jsonapi:"attr,beta,omitempty"`
+	Archs            []*ToolVersionArchitecture `jsonapi:"attr,archs,omitempty"`
 }
 
 // AdminTerraformVersionUpdateOptions for updating terraform version.
 // https://developer.hashicorp.com/terraform/enterprise/api-docs/admin/terraform-versions#request-body
 type AdminTerraformVersionUpdateOptions struct {
-	Type             string  `jsonapi:"primary,terraform-versions"`
-	Version          *string `jsonapi:"attr,version,omitempty"`
-	URL              *string `jsonapi:"attr,url,omitempty"`
-	Sha              *string `jsonapi:"attr,sha,omitempty"`
-	Official         *bool   `jsonapi:"attr,official,omitempty"`
-	Deprecated       *bool   `jsonapi:"attr,deprecated,omitempty"`
-	DeprecatedReason *string `jsonapi:"attr,deprecated-reason,omitempty"`
-	Enabled          *bool   `jsonapi:"attr,enabled,omitempty"`
-	Beta             *bool   `jsonapi:"attr,beta,omitempty"`
+	Type             string                     `jsonapi:"primary,terraform-versions"`
+	Version          *string                    `jsonapi:"attr,version,omitempty"`
+	URL              *string                    `jsonapi:"attr,url,omitempty"`
+	Sha              *string                    `jsonapi:"attr,sha,omitempty"`
+	Official         *bool                      `jsonapi:"attr,official,omitempty"`
+	Deprecated       *bool                      `jsonapi:"attr,deprecated,omitempty"`
+	DeprecatedReason *string                    `jsonapi:"attr,deprecated-reason,omitempty"`
+	Enabled          *bool                      `jsonapi:"attr,enabled,omitempty"`
+	Beta             *bool                      `jsonapi:"attr,beta,omitempty"`
+	Archs            []*ToolVersionArchitecture `jsonapi:"attr,archs,omitempty"`
 }
 
 // AdminTerraformVersionsList represents a list of terraform versions.
@@ -214,19 +216,27 @@ func (o AdminTerraformVersionCreateOptions) valid() error {
 	if !validString(o.Version) {
 		return ErrRequiredVersion
 	}
-	if !o.validArch() && (!validString(o.URL) || !validString(o.Sha)) {
-		return ErrRequiredArchOrURLAndSha
+	if !o.validArchs() {
+		return ErrRequiredArchsOrURLAndSha
 	}
 	return nil
 }
 
-func (o AdminTerraformVersionCreateOptions) validArch() bool {
-	var valid bool
+func (o AdminTerraformVersionCreateOptions) validArchs() bool {
+	if o.Archs == nil && validString(o.URL) && validString(o.Sha) {
+		return true
+	}
+
+	emptyToolVersionFields := !validString(o.URL) && !validString(o.Sha)
+
 	for _, a := range o.Archs {
-		valid = validString(&a.URL) && validString(&a.Sha) && a.OS == linux && (a.Arch == amd64 || a.Arch == arm64)
-		if valid {
-			break
+		if !validArch(a) || !emptyToolVersionFields && (*o.URL != a.URL || *o.Sha != a.Sha) {
+			return false
 		}
 	}
-	return valid
+	return true
+}
+
+func validArch(a *ToolVersionArchitecture) bool {
+	return a.URL != "" && a.Sha != "" && a.OS == linux && (a.Arch == amd64 || a.Arch == arm64)
 }

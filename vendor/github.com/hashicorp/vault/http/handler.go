@@ -78,6 +78,50 @@ const (
 	// provided and the server is fed ever more data until it exhausts memory.
 	// Can be overridden per listener.
 	DefaultMaxRequestSize = 32 * 1024 * 1024
+
+	// VaultSnapshotReadParam is the query parameter sent when Vault should read
+	// the data from a loaded snapshot
+	VaultSnapshotReadParam = "read_snapshot_id"
+	// VaultSnapshotRecoverParam is the query parameter sent when Vault should
+	// recover the data from a loaded snapshot
+	VaultSnapshotRecoverParam = "recover_snapshot_id"
+
+	// CustomMaxJSONDepth specifies the maximum nesting depth of a JSON object.
+	// This limit is designed to prevent stack exhaustion attacks from deeply
+	// nested JSON payloads, which could otherwise lead to a denial-of-service
+	// (DoS) vulnerability. The default value of 300 is intentionally generous
+	// to support complex but legitimate configurations, while still providing
+	// a safeguard against malicious or malformed input. This value is
+	// configurable to accommodate unique environmental requirements.
+	CustomMaxJSONDepth = 300
+
+	// CustomMaxJSONStringValueLength defines the maximum allowed length for a single
+	// string value within a JSON payload, in bytes. This is a critical defense
+	// against excessive memory allocation attacks where a client might send a
+	// very large string value to exhaust server memory. The default of 1MB
+	// (1024 * 1024 bytes) is chosen to comfortably accommodate large secrets
+	// such as private keys, certificate chains, or detailed configuration data,
+	// without permitting unbounded allocation. This value is configurable.
+	CustomMaxJSONStringValueLength = 1024 * 1024 // 1MB
+
+	// CustomMaxJSONObjectEntryCount sets the maximum number of key-value pairs
+	// allowed in a single JSON object. This limit helps mitigate the risk of
+	// hash-collision denial-of-service (HashDoS) attacks and prevents general
+	// resource exhaustion from parsing objects with an excessive number of
+	// entries. A default of 10,000 entries is well beyond the scope of typical
+	// Vault secrets or configurations, providing a high ceiling for normal
+	// operations while ensuring stability. This value is configurable.
+	CustomMaxJSONObjectEntryCount = 10000
+
+	// CustomMaxJSONArrayElementCount determines the maximum number of elements
+	// permitted in a single JSON array. This is particularly relevant for API
+	// endpoints that can return large lists, such as the result of a `LIST`
+	// operation on a secrets engine path. The default limit of 10,000 elements
+	// prevents a single request from causing excessive memory consumption. While
+	// most environments will fall well below this limit, it is configurable for
+	// systems that require handling larger datasets, though pagination is the
+	// recommended practice for such cases.
+	CustomMaxJSONArrayElementCount = 10000
 )
 
 var (
@@ -125,6 +169,7 @@ func init() {
 		"sys/storage/raft/snapshot",
 		"sys/storage/raft/snapshot-force",
 		"!sys/storage/raft/snapshot-auto/config",
+		"sys/storage/raft/snapshot-load",
 	})
 	websocketPaths.AddPaths(websocketRawPaths)
 }
@@ -626,7 +671,14 @@ func WrapForwardedForHandler(h http.Handler, l *configutil.Listener) http.Handle
 							}
 							v = decoded
 						case "BASE64":
-							decoded, err := base64.StdEncoding.DecodeString(v)
+							// Support RFC 9440/8941 Structured Headers byte sequence values (":MIIC...==:").
+							// If the value is wrapped in leading/trailing colons, unwrap before decoding.
+							base64Value := v
+							if len(v) >= 2 && v[0] == ':' && v[len(v)-1] == ':' {
+								base64Value = v[1 : len(v)-1]
+							}
+
+							decoded, err := base64.StdEncoding.DecodeString(base64Value)
 							if err != nil {
 								respondError(w, http.StatusBadRequest, fmt.Errorf("failed to base64 decode the client certificate: %w", err))
 								return
@@ -906,6 +958,10 @@ func handleRequestForwarding(core *vault.Core, handler http.Handler) http.Handle
 			return
 		}
 
+		// Check if the request requires a snapshot, which is only on the active
+		// node
+		shouldForward = shouldForward || requiresSnapshot(r)
+
 		// If we are a performance standby we can maybe handle the request.
 		if core.PerfStandby() && !shouldForward {
 			ns, err := namespace.FromContext(r.Context())
@@ -1017,6 +1073,8 @@ func forwardRequest(core *vault.Core, w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(statusCode)
 	w.Write(retBytes)
+
+	logical.IncrementResponseStatusCodeMetric(statusCode)
 }
 
 // request is a helper to perform a request and properly exit in the
@@ -1185,6 +1243,8 @@ func respondStandby(core *vault.Core, w http.ResponseWriter, r *http.Request) {
 	// the request method should be preserved.
 	w.Header().Set("Location", finalURL.String())
 	w.WriteHeader(307)
+
+	logical.IncrementResponseStatusCodeMetric(307)
 }
 
 // getTokenFromReq parse headers of the incoming request to extract token if
@@ -1386,8 +1446,10 @@ func respondOk(w http.ResponseWriter, body interface{}) {
 
 	if body == nil {
 		w.WriteHeader(http.StatusNoContent)
+		defer logical.IncrementResponseStatusCodeMetric(http.StatusNoContent)
 	} else {
 		w.WriteHeader(http.StatusOK)
+		defer logical.IncrementResponseStatusCodeMetric(http.StatusOK)
 		enc := json.NewEncoder(w)
 		enc.Encode(body)
 	}
@@ -1410,6 +1472,8 @@ func oidcPermissionDenied(path string, err error) bool {
 func respondOIDCPermissionDenied(w http.ResponseWriter) {
 	errorCode := "invalid_token"
 	errorDescription := logical.ErrPermissionDenied.Error()
+
+	defer logical.IncrementResponseStatusCodeMetric(http.StatusUnauthorized)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("WWW-Authenticate", fmt.Sprintf("Bearer error=%q,error_description=%q",
@@ -1436,4 +1500,17 @@ func trimPath(ns *namespace.Namespace, path string) string {
 	}
 
 	return ns.TrimmedPath(path)
+}
+
+// requiresSnapshot checks if the request requires a loaded snapshot, by
+// checking for the existence of a snapshot query parameter
+func requiresSnapshot(r *http.Request) bool {
+	query := r.URL.Query()
+	switch r.Method {
+	case http.MethodGet, "LIST":
+		return query.Has(VaultSnapshotReadParam)
+	case http.MethodPut, http.MethodPost:
+		return query.Has(VaultSnapshotRecoverParam)
+	}
+	return false
 }

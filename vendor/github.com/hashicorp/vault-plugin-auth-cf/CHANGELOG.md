@@ -1,5 +1,15 @@
 ## Unreleased
 
+## 0.21.0
+### Jun 03, 2025
+
+IMPROVEMENTS:
+* upgrade go to 1.24.3
+* Updated dependencies: 
+   * github.com/hashicorp/go-secure-stdlib/parseutil v0.1.9 -> v0.2.0
+   * github.com/hashicorp/vault/api v1.15.0 -> v1.16.0
+   * github.com/hashicorp/vault/sdk v0.14.1 -> v0.17.0
+   * golang.org/x/net v0.38.0 -> v0.40.0 
 ## v0.20.1 (May 12, 2025)
 
 IMPROVEMENTS:

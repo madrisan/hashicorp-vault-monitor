@@ -1,5 +1,41 @@
 # Release Notes
 
+## Version 10.7.0 (17 April 2025)
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1278](https://jira.issues.couchbase.com/browse/GOCBC-1278):
+  * Added support for `ExtReplaceBodyWithXattr` (copy based unstaging) to transactions.
+* [GOCBC-1311](https://jira.issues.couchbase.com/browse/GOCBC-1311):
+  * Added support for `ExtThreadSafety` to transactions.
+* [GOCBC-1430](https://jira.issues.couchbase.com/browse/GOCBC-1430):
+  * Use `/whoami` rather than `/` for pinging the management service.
+* [GOCBC-1676](https://jira.issues.couchbase.com/browse/GOCBC-1676):
+  * Added support for application telemetry.
+* [GOCBC-1701](https://jira.issues.couchbase.com/browse/GOCBC-1701): Added support for `ExtGetMulti` to transactions.
+
+### Fixed Issues
+
+* [GOCBC-1712](https://jira.issues.couchbase.com/browse/GOCBC-1712): Fixed issue where `Append` and `Prepend` would return `DocExists` rather than `CasMismatch`.
+
+## Version 10.6.0 (10 March 2025)
+
+This version primarily adds support for a new Columnar agent, and bumps the minimum supported Go version to 1.21.
+
+### New Features and Behavioral Changes
+
+* [GOCBC-1676](https://jira.issues.couchbase.com/browse/GOCBC-1676):
+  * Refactored http operation internals.
+  * Added support for `NodeUUID` in config parsing
+* [GOCBC-1687](https://jira.issues.couchbase.com/browse/GOCBC-1687): Replaced usages of deprecated http transport dial functions.
+* [GOCBC-1688](https://jira.issues.couchbase.com/browse/GOCBC-1688): Replaced usages of deprecated ioutil functions.
+* [GOCBC-1706](https://jira.issues.couchbase.com/browse/GOCBC-1706): Added support for Columnar via a new Columnar Agent.
+* [GOCBC-1707](https://jira.issues.couchbase.com/browse/GOCBC-1707): Bumped minimum supported Go version to 1.21.
+
+### Fixed Issues
+
+* [GOCBC-1708](https://jira.issues.couchbase.com/browse/GOCBC-1708): Fixed issue where `PasswordAuthProvider` could leak credentials into the logs on agent startup.
+
 ## Version 10.5.3 (25 November 2024)
 
 ### New Features and Behavioral Changes

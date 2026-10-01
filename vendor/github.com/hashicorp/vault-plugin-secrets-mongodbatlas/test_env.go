@@ -24,6 +24,32 @@ type testEnv struct {
 	MostRecentSecret *logical.Secret
 }
 
+// validate checks if the test environment is properly set up.
+func (e *testEnv) validate() error {
+	if e.Backend == nil {
+		return fmt.Errorf("backend is not set")
+	}
+	if e.Context == nil {
+		return fmt.Errorf("context is not set")
+	}
+	if e.Storage == nil {
+		return fmt.Errorf("storage is not set")
+	}
+	if e.PublicKey == "" {
+		return fmt.Errorf("public key is not set")
+	}
+	if e.PrivateKey == "" {
+		return fmt.Errorf("private key is not set")
+	}
+	if e.ProjectID == "" {
+		return fmt.Errorf("project ID is not set")
+	}
+	if e.OrganizationID == "" {
+		return fmt.Errorf("organization ID is not set")
+	}
+	return nil
+}
+
 func (e *testEnv) AddConfig(t *testing.T) {
 	req := &logical.Request{
 		Operation: logical.UpdateOperation,
@@ -258,6 +284,11 @@ func (e *testEnv) ReadProgrammaticAPIKeyRule(t *testing.T) {
 }
 
 func (e *testEnv) CheckLease(t *testing.T) {
+	t.Helper()
+	if e.MostRecentSecret == nil {
+		t.Fatal("expected the most recent secret to be set, this is a bug in the test code")
+	}
+
 	ttl := int(e.MostRecentSecret.TTL.Seconds())
 	wantedTTL := 20
 	maxTTL := int(e.MostRecentSecret.MaxTTL.Seconds())

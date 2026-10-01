@@ -62,6 +62,7 @@ type fieldRegistry struct {
 	PasswordLastSet    *Field `ldap:"passwordLastSet"`
 	RACFID             *Field `ldap:"racfid"`
 	RACFPassword       *Field `ldap:"racfPassword"`
+	RACFPassphrase     *Field `ldap:"racfPassPhrase"`
 	RACFAttributes     *Field `ldap:"racfAttributes"`
 	SAMAccountName     *Field `ldap:"sAMAccountName"`
 	UnicodePassword    *Field `ldap:"unicodePwd"`

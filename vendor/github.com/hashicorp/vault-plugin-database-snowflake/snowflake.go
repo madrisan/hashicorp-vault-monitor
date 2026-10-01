@@ -9,13 +9,11 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/errwrap"
 	"github.com/hashicorp/go-secure-stdlib/strutil"
 	"github.com/hashicorp/vault/sdk/database/dbplugin/v5"
-	"github.com/hashicorp/vault/sdk/database/helper/connutil"
 	"github.com/hashicorp/vault/sdk/database/helper/dbutil"
 	"github.com/hashicorp/vault/sdk/helper/dbtxn"
 	"github.com/hashicorp/vault/sdk/helper/template"
@@ -23,7 +21,8 @@ import (
 )
 
 const (
-	snowflakeSQLTypeName     = "snowflake"
+	snowflakeSQLTypeName = "snowflake"
+
 	defaultSnowflakeRenewSQL = `
 alter user {{name}} set DAYS_TO_EXPIRY = {{expiration}};
 `
@@ -48,26 +47,19 @@ func New() (interface{}, error) {
 	return dbType, nil
 }
 
-func (s *SnowflakeSQL) secretValues() map[string]string {
-	return map[string]string{
-		s.Password: "[password]",
-	}
-}
-
 func new() *SnowflakeSQL {
-	connProducer := &connutil.SQLConnectionProducer{}
+	connProducer := &snowflakeConnectionProducer{}
 	connProducer.Type = snowflakeSQLTypeName
 
 	db := &SnowflakeSQL{
-		SQLConnectionProducer: connProducer,
+		snowflakeConnectionProducer: connProducer,
 	}
 
 	return db
 }
 
 type SnowflakeSQL struct {
-	*connutil.SQLConnectionProducer
-	sync.RWMutex
+	*snowflakeConnectionProducer
 
 	usernameProducer template.StringTemplate
 }
@@ -86,7 +78,7 @@ func (s *SnowflakeSQL) getConnection(ctx context.Context) (*sql.DB, error) {
 }
 
 func (s *SnowflakeSQL) Initialize(ctx context.Context, req dbplugin.InitializeRequest) (dbplugin.InitializeResponse, error) {
-	err := s.SQLConnectionProducer.Initialize(ctx, req.Config, req.VerifyConnection)
+	err := s.snowflakeConnectionProducer.Initialize(ctx, req.Config, req.VerifyConnection)
 	if err != nil {
 		return dbplugin.InitializeResponse{}, err
 	}
@@ -122,8 +114,8 @@ func (s *SnowflakeSQL) Initialize(ctx context.Context, req dbplugin.InitializeRe
 }
 
 func (s *SnowflakeSQL) NewUser(ctx context.Context, req dbplugin.NewUserRequest) (dbplugin.NewUserResponse, error) {
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	statements := req.Statements.Commands
 	if len(statements) == 0 {
@@ -199,8 +191,8 @@ func (s *SnowflakeSQL) generateUsername(req dbplugin.NewUserRequest) (string, er
 }
 
 func (s *SnowflakeSQL) UpdateUser(ctx context.Context, req dbplugin.UpdateUserRequest) (dbplugin.UpdateUserResponse, error) {
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	if req.Username == "" {
 		err := fmt.Errorf("a username must be provided to update a user")
@@ -331,8 +323,8 @@ func (s *SnowflakeSQL) updateUserExpiration(ctx context.Context, tx *sql.Tx, use
 }
 
 func (s *SnowflakeSQL) DeleteUser(ctx context.Context, req dbplugin.DeleteUserRequest) (dbplugin.DeleteUserResponse, error) {
-	s.RLock()
-	defer s.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	username := req.Username
 	statements := req.Statements.Commands

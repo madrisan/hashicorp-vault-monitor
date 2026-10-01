@@ -55,7 +55,7 @@ func (c *Client) UpdateDNPassword(conf *client.Config, dn string, newPassword st
 		dn = conf.UserDN
 	}
 
-	newValues, err := client.GetSchemaFieldRegistry(conf.Schema, newPassword)
+	newValues, err := client.GetSchemaFieldRegistry(conf, newPassword)
 	if err != nil {
 		return fmt.Errorf("error updating password: %s", err)
 	}
@@ -79,7 +79,7 @@ func (c *Client) UpdateUserPassword(conf *client.Config, username string, newPas
 		field: {username},
 	}
 
-	newValues, err := client.GetSchemaFieldRegistry(conf.Schema, newPassword)
+	newValues, err := client.GetSchemaFieldRegistry(conf, newPassword)
 	if err != nil {
 		return fmt.Errorf("error updating password: %s", err)
 	}

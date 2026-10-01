@@ -28,6 +28,9 @@ type Projects interface {
 	// Read a project by its ID.
 	Read(ctx context.Context, projectID string) (*Project, error)
 
+	// ReadWithOptions a project by its ID.
+	ReadWithOptions(ctx context.Context, projectID string, options ProjectReadOptions) (*Project, error)
+
 	// Update a project.
 	Update(ctx context.Context, projectID string, options ProjectUpdateOptions) (*Project, error)
 
@@ -71,8 +74,15 @@ type Project struct {
 	AutoDestroyActivityDuration jsonapi.NullableAttr[string] `jsonapi:"attr,auto-destroy-activity-duration,omitempty"`
 
 	// Relations
-	Organization *Organization `jsonapi:"relation,organization"`
+	Organization         *Organization          `jsonapi:"relation,organization"`
+	EffectiveTagBindings []*EffectiveTagBinding `jsonapi:"relation,effective-tag-bindings"`
 }
+
+type ProjectIncludeOpt string
+
+const (
+	ProjectEffectiveTagBindings ProjectIncludeOpt = "effective_tag_bindings"
+)
 
 // ProjectListOptions represents the options for listing projects
 type ProjectListOptions struct {
@@ -89,6 +99,14 @@ type ProjectListOptions struct {
 	// Optional: A filter string to list projects filtered by key/value tags.
 	// These are not annotated and therefore not encoded by go-querystring
 	TagBindings []*TagBinding
+
+	// Optional: A list of relations to include
+	Include []ProjectIncludeOpt `url:"include,omitempty"`
+}
+
+type ProjectReadOptions struct {
+	// Optional: A list of relations to include
+	Include []ProjectIncludeOpt `url:"include,omitempty"`
 }
 
 // ProjectCreateOptions represents the options for creating a project
@@ -182,6 +200,27 @@ func (s *projects) Create(ctx context.Context, organization string, options Proj
 
 	u := fmt.Sprintf("organizations/%s/projects", url.PathEscape(organization))
 	req, err := s.client.NewRequest("POST", u, &options)
+	if err != nil {
+		return nil, err
+	}
+
+	p := &Project{}
+	err = req.Do(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+// ReadWithOptions a project by its ID.
+func (s *projects) ReadWithOptions(ctx context.Context, projectID string, options ProjectReadOptions) (*Project, error) {
+	if !validStringID(&projectID) {
+		return nil, ErrInvalidProjectID
+	}
+
+	u := fmt.Sprintf("projects/%s", url.PathEscape(projectID))
+	req, err := s.client.NewRequest("GET", u, options)
 	if err != nil {
 		return nil, err
 	}

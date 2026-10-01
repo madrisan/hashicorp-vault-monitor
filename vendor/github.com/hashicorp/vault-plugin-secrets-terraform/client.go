@@ -5,6 +5,7 @@ package tfc
 
 import (
 	"errors"
+	"time"
 
 	"github.com/hashicorp/go-tfe"
 )
@@ -14,9 +15,10 @@ type client struct {
 }
 
 type terraformToken struct {
-	ID          string `json:"id"`
-	Description string `json:"description"`
-	Token       string `json:"token"`
+	ID          string    `json:"id"`
+	Description string    `json:"description"`
+	Token       string    `json:"token"`
+	ExpiredAt   time.Time `json:"expired_at,omitempty"`
 }
 
 func newClient(config *tfConfig) (*client, error) {

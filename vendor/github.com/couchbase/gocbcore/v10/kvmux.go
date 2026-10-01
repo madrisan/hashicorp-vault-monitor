@@ -44,8 +44,9 @@ type kvMux struct {
 	cfgMgr             *configManagementComponent
 	errMapMgr          *errMapComponent
 
-	tracer *tracerComponent
-	dialer *memdClientDialerComponent
+	tracer    *tracerComponent
+	telemetry *telemetryComponent
+	dialer    *memdClientDialerComponent
 
 	postCompleteErrHandler postCompleteErrorHandler
 
@@ -74,7 +75,7 @@ type kvMuxProps struct {
 }
 
 func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *errMapComponent, tracer *tracerComponent,
-	dialer *memdClientDialerComponent, muxState *kvMuxState) *kvMux {
+	telemetry *telemetryComponent, dialer *memdClientDialerComponent, muxState *kvMuxState) *kvMux {
 	mux := &kvMux{
 		queueSize:          props.QueueSize,
 		poolSize:           props.PoolSize,
@@ -82,6 +83,7 @@ func newKVMux(props kvMuxProps, cfgMgr *configManagementComponent, errMapMgr *er
 		cfgMgr:             cfgMgr,
 		errMapMgr:          errMapMgr,
 		tracer:             tracer,
+		telemetry:          telemetry,
 		dialer:             dialer,
 		shutdownSig:        make(chan struct{}),
 		noTLSSeedNode:      props.NoTLSSeedNode,
@@ -239,7 +241,7 @@ func (mux *kvMux) NumPipelines() int {
 	return clientMux.NumPipelines()
 }
 
-// CollectionsEnaled returns whether or not the kv mux was created with collections enabled.
+// CollectionsEnabled returns whether or not the kv mux was created with collections enabled.
 func (mux *kvMux) CollectionsEnabled() bool {
 	return mux.collectionsEnabled
 }
@@ -565,22 +567,20 @@ func (mux *kvMux) PipelineSnapshot() (*pipelineSnapshot, error) {
 	}, nil
 }
 
-type waitForConfigSnapshotOp struct {
-	cancelCh chan struct{}
-}
-
-func (w *waitForConfigSnapshotOp) Cancel() {
-	close(w.cancelCh)
-}
-
-func (mux *kvMux) WaitForConfigSnapshot(deadline time.Time, cb WaitForConfigSnapshotCallback) (PendingOp, error) {
+func (mux *kvMux) blockUntilFirstConfig(deadline time.Time, operationID string, cb func(*kvMuxState, error)) (PendingOp, error) {
 	// No point in doing anything if we're shutdown.
 	clientMux := mux.getState()
 	if clientMux == nil {
 		return nil, errShutdown
 	}
 
-	op := &waitForConfigSnapshotOp{
+	if clientMux.RevID() > -1 {
+		cb(clientMux, nil)
+
+		return &noopOp, nil
+	}
+
+	op := &basicCancellableOp{
 		cancelCh: make(chan struct{}),
 	}
 
@@ -599,26 +599,45 @@ func (mux *kvMux) WaitForConfigSnapshot(deadline time.Time, cb WaitForConfigSnap
 		case <-deadlineCh:
 			cb(nil, &TimeoutError{
 				InnerError:   errUnambiguousTimeout,
-				OperationID:  "WaitForConfigSnapshot",
+				OperationID:  operationID,
 				TimeObserved: time.Since(start),
 			})
 		case <-mux.hasSeenConfigCh:
-			// Just in case.
+			// This clientMux we already have isn't the currently applied one.
 			clientMux := mux.getState()
 			if clientMux == nil {
 				cb(nil, errShutdown)
 				return
 			}
 
-			cb(&WaitForConfigSnapshotResult{
-				Snapshot: &ConfigSnapshot{
-					state: clientMux,
-				},
-			}, nil)
+			cb(clientMux, nil)
 		}
 	}()
 
 	return op, nil
+}
+
+type basicCancellableOp struct {
+	cancelCh chan struct{}
+}
+
+func (w *basicCancellableOp) Cancel() {
+	close(w.cancelCh)
+}
+
+func (mux *kvMux) WaitForConfigSnapshot(deadline time.Time, cb WaitForConfigSnapshotCallback) (PendingOp, error) {
+	return mux.blockUntilFirstConfig(deadline, "WaitForConfigSnapshot", func(clientMux *kvMuxState, err error) {
+		if err != nil {
+			cb(nil, err)
+			return
+		}
+
+		cb(&WaitForConfigSnapshotResult{
+			Snapshot: &ConfigSnapshot{
+				state: clientMux,
+			},
+		}, nil)
+	})
 }
 
 func (mux *kvMux) ConfigSnapshot() (*ConfigSnapshot, error) {
@@ -882,18 +901,20 @@ func (mux *kvMux) newKVMuxState(cfg *routeConfig, tlsConfig *dynTLSConfig, authM
 	logDebugf(buffer.String())
 
 	pipelines := make([]*memdPipeline, len(kvServerList))
-	for i, hostPort := range kvServerList {
-		trimmedHostPort := routeEndpoint{
-			Address:     trimSchemePrefix(hostPort.Address),
-			IsSeedNode:  hostPort.IsSeedNode,
-			ServerGroup: hostPort.ServerGroup,
+	for i, endpoint := range kvServerList {
+		trimmedEndpoint := routeEndpoint{
+			Address:          trimSchemePrefix(endpoint.Address),
+			IsSeedNode:       endpoint.IsSeedNode,
+			ServerGroup:      endpoint.ServerGroup,
+			NodeUUID:         endpoint.NodeUUID,
+			CanonicalAddress: endpoint.CanonicalAddress,
 		}
 
 		getCurClientFn := func(cancelSig <-chan struct{}) (*memdClient, error) {
-			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedHostPort, tlsConfig, auth, authMechanisms,
+			return mux.dialer.SlowDialMemdClient(cancelSig, trimmedEndpoint, tlsConfig, auth, authMechanisms,
 				mux.handleOpRoutingResp, mux.handleServerRequest)
 		}
-		pipeline := newPipeline(trimmedHostPort, poolSize, mux.queueSize, getCurClientFn)
+		pipeline := newPipeline(trimmedEndpoint, poolSize, mux.queueSize, getCurClientFn, mux.telemetry)
 
 		pipelines[i] = pipeline
 	}

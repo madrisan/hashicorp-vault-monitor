@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package dbplugin
@@ -14,6 +14,7 @@ import (
 	log "github.com/hashicorp/go-hclog"
 	metrics "github.com/hashicorp/go-metrics/compat"
 	"github.com/hashicorp/vault/sdk/logical"
+	"github.com/jackc/pgx/v5/pgconn"
 	"google.golang.org/grpc/status"
 )
 
@@ -299,9 +300,11 @@ func (mw DatabaseErrorSanitizerMiddleware) sanitize(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errwrap.ContainsType(err, new(url.Error)) {
+
+	if errwrap.ContainsType(err, new(url.Error)) || errwrap.ContainsType(err, new(pgconn.ParseConfigError)) {
 		return errors.New("unable to parse connection url")
 	}
+
 	if mw.secretsFn == nil {
 		return err
 	}

@@ -16,31 +16,37 @@ var (
 type memdGetClientFn func(cancelSig <-chan struct{}) (*memdClient, error)
 
 type memdPipeline struct {
-	address     string
-	getClientFn memdGetClientFn
-	maxItems    int
-	queue       *memdOpQueue
-	maxClients  int
-	clients     []*memdPipelineClient
-	clientsLock sync.Mutex
-	isSeedNode  bool
-	serverGroup string
+	address          string
+	getClientFn      memdGetClientFn
+	maxItems         int
+	queue            *memdOpQueue
+	maxClients       int
+	clients          []*memdPipelineClient
+	clientsLock      sync.Mutex
+	isSeedNode       bool
+	serverGroup      string
+	nodeUUID         string
+	canonicalAddress string
+	telemetry        *telemetryComponent
 }
 
-func newPipeline(endpoint routeEndpoint, maxClients, maxItems int, getClientFn memdGetClientFn) *memdPipeline {
+func newPipeline(endpoint routeEndpoint, maxClients, maxItems int, getClientFn memdGetClientFn, telemetry *telemetryComponent) *memdPipeline {
 	return &memdPipeline{
-		address:     endpoint.Address,
-		getClientFn: getClientFn,
-		maxClients:  maxClients,
-		maxItems:    maxItems,
-		queue:       newMemdOpQueue(),
-		isSeedNode:  endpoint.IsSeedNode,
-		serverGroup: endpoint.ServerGroup,
+		address:          endpoint.Address,
+		getClientFn:      getClientFn,
+		maxClients:       maxClients,
+		maxItems:         maxItems,
+		queue:            newMemdOpQueue(),
+		isSeedNode:       endpoint.IsSeedNode,
+		serverGroup:      endpoint.ServerGroup,
+		nodeUUID:         endpoint.NodeUUID,
+		canonicalAddress: endpoint.CanonicalAddress,
+		telemetry:        telemetry,
 	}
 }
 
 func newDeadPipeline(maxItems int) *memdPipeline {
-	return newPipeline(routeEndpoint{}, 0, maxItems, nil)
+	return newPipeline(routeEndpoint{}, 0, maxItems, nil, nil)
 }
 
 // nolint: unused
@@ -109,6 +115,31 @@ func (pipeline *memdPipeline) StartClients() {
 }
 
 func (pipeline *memdPipeline) sendRequest(req *memdQRequest, maxItems int) error {
+	if pipeline.telemetry.TelemetryEnabled() {
+		cmdCategory := req.Command.Category()
+
+		if cmdCategory != memd.CmdCategoryUnknown {
+			var node, altNode string
+			if pipeline.canonicalAddress != "" && pipeline.canonicalAddress != pipeline.address {
+				node = hostnameFromURI(pipeline.canonicalAddress)
+				altNode = hostnameFromURI(pipeline.address)
+			} else {
+				node = hostnameFromURI(pipeline.address)
+			}
+
+			req.processingLock.Lock()
+			req.telemetryRecorder = pipeline.telemetry.GetRecorder(telemetryOperationAttributes{
+				node:     node,
+				altNode:  altNode,
+				nodeUUID: pipeline.nodeUUID,
+				service:  MemdService,
+				mutation: cmdCategory == memd.CmdCategoryMutation,
+				durable:  req.DurabilityLevelFrame != nil && req.DurabilityLevelFrame.DurabilityLevel != 0,
+			})
+			req.processingLock.Unlock()
+		}
+	}
+
 	err := pipeline.queue.Push(req, maxItems)
 	if err == errOpQueueClosed {
 		return errPipelineClosed
@@ -129,10 +160,9 @@ func (pipeline *memdPipeline) SendRequest(req *memdQRequest) error {
 	return pipeline.sendRequest(req, pipeline.maxItems)
 }
 
-// Performs a takeover of another pipeline.  Note that this does not
-//
-//	take over the requests queued in the old pipeline, and those must
-//	be drained and processed separately.
+// Takeover performs a takeover of another pipeline.  Note that this does not
+// take over the requests queued in the old pipeline, and those must
+// be drained and processed separately.
 func (pipeline *memdPipeline) Takeover(oldPipeline *memdPipeline) {
 	if oldPipeline.address != pipeline.address {
 		logErrorf("Attempted pipeline takeover for differing address")

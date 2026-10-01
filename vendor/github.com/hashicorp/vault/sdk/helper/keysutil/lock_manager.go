@@ -1,4 +1,4 @@
-// Copyright (c) HashiCorp, Inc.
+// Copyright IBM Corp. 2016, 2025
 // SPDX-License-Identifier: MPL-2.0
 
 package keysutil
@@ -150,16 +150,21 @@ func (lm *LockManager) InitCache(cacheSize int) error {
 
 // RestorePolicy acquires an exclusive lock on the policy name and restores the
 // given policy along with the archive.
-func (lm *LockManager) RestorePolicy(ctx context.Context, storage logical.Storage, name, backup string, force bool) error {
+func (lm *LockManager) RestorePolicy(ctx context.Context, storage logical.Storage, name, backup string, force bool) (string, error) {
 	backupBytes, err := base64.StdEncoding.DecodeString(backup)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	var keyData KeyData
 	err = jsonutil.DecodeJSON(backupBytes, &keyData)
 	if err != nil {
-		return err
+		return "", err
+	}
+
+	// Validate that the policy exists in the backup data
+	if keyData.Policy == nil {
+		return "", errors.New("backup data does not contain a valid policy")
 	}
 
 	// Set a different name if desired
@@ -183,7 +188,7 @@ func (lm *LockManager) RestorePolicy(ctx context.Context, storage logical.Storag
 	if lm.useCache {
 		pRaw, ok = lm.cache.Load(name)
 		if ok && !force {
-			return fmt.Errorf("key %q already exists", name)
+			return "", fmt.Errorf("key %q already exists", name)
 		}
 	}
 
@@ -202,10 +207,10 @@ func (lm *LockManager) RestorePolicy(ctx context.Context, storage logical.Storag
 	if pRaw == nil {
 		p, err = lm.getPolicyFromStorage(ctx, storage, name)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if p != nil && !force {
-			return fmt.Errorf("key %q already exists", name)
+			return "", fmt.Errorf("key %q already exists", name)
 		}
 	}
 
@@ -225,7 +230,7 @@ func (lm *LockManager) RestorePolicy(ctx context.Context, storage logical.Storag
 	if keyData.ArchivedKeys != nil {
 		err = keyData.Policy.storeArchive(ctx, storage, keyData.ArchivedKeys)
 		if err != nil {
-			return errwrap.Wrapf(fmt.Sprintf("failed to restore archived keys for key %q: {{err}}", name), err)
+			return "", errwrap.Wrapf(fmt.Sprintf("failed to restore archived keys for key %q: {{err}}", name), err)
 		}
 	}
 
@@ -238,7 +243,7 @@ func (lm *LockManager) RestorePolicy(ctx context.Context, storage logical.Storag
 	// Restore the policy. This will also attempt to adjust the archive.
 	err = keyData.Policy.Persist(ctx, storage)
 	if err != nil {
-		return errwrap.Wrapf(fmt.Sprintf("failed to restore the policy %q: {{err}}", name), err)
+		return "", errwrap.Wrapf(fmt.Sprintf("failed to restore the policy %q: {{err}}", name), err)
 	}
 
 	keyData.Policy.l = new(sync.RWMutex)
@@ -247,7 +252,7 @@ func (lm *LockManager) RestorePolicy(ctx context.Context, storage logical.Storag
 	if lm.useCache {
 		lm.cache.Store(name, keyData.Policy)
 	}
-	return nil
+	return name, nil
 }
 
 func (lm *LockManager) BackupPolicy(ctx context.Context, storage logical.Storage, name string) (string, error) {
@@ -373,7 +378,7 @@ func (lm *LockManager) GetPolicy(ctx context.Context, req PolicyRequest, rand io
 		// because we don't know if the parameters match.
 
 		switch req.KeyType {
-		case KeyType_AES128_GCM96, KeyType_AES256_GCM96, KeyType_ChaCha20_Poly1305:
+		case KeyType_AES128_GCM96, KeyType_AES256_GCM96, KeyType_ChaCha20_Poly1305, KeyType_AES128_CBC, KeyType_AES256_CBC:
 			if req.Convergent && !req.Derived {
 				cleanup()
 				return nil, false, fmt.Errorf("convergent encryption requires derivation to be enabled")
@@ -421,6 +426,12 @@ func (lm *LockManager) GetPolicy(ctx context.Context, req PolicyRequest, rand io
 			}
 
 		case KeyType_HYBRID:
+			if req.Derived || req.Convergent {
+				cleanup()
+				return nil, false, fmt.Errorf("key derivation and convergent encryption not supported for keys of type %v", req.KeyType)
+			}
+
+		case KeyType_SLH_DSA:
 			if req.Derived || req.Convergent {
 				cleanup()
 				return nil, false, fmt.Errorf("key derivation and convergent encryption not supported for keys of type %v", req.KeyType)
@@ -489,6 +500,13 @@ func (lm *LockManager) GetPolicy(ctx context.Context, req PolicyRequest, rand io
 		}
 	}
 
+	if p.Imported && p.Derived && p.KDF == Kdf_hmac_sha256_counter {
+		if err := p.setKDF(ctx, req.Storage, Kdf_hkdf_sha256); err != nil {
+			cleanup()
+			return nil, false, err
+		}
+	}
+
 	if lm.useCache {
 		lm.cache.Store(req.Name, p)
 	} else {
@@ -542,6 +560,19 @@ func (lm *LockManager) ImportPolicy(ctx context.Context, req PolicyRequest, key 
 			AutoRotatePeriod:         req.AutoRotatePeriod,
 			AllowImportedKeyRotation: req.AllowImportedKeyRotation,
 			Imported:                 true,
+		}
+	}
+
+	if req.Derived {
+		p.KDF = Kdf_hkdf_sha256
+		if req.Convergent {
+			p.ConvergentEncryption = true
+			// As of version 3 we store the version within each key, so we
+			// set to -1 to indicate that the value in the policy has no
+			// meaning. We still, for backwards compatibility, fall back to
+			// this value if the key doesn't have one, which means it will
+			// only be -1 in the case where every key version is >= 3
+			p.ConvergentVersion = -1
 		}
 	}
 

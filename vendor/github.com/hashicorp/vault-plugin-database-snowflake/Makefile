@@ -4,6 +4,8 @@ VETARGS?=-asmdecl -atomic -bool -buildtags -copylocks -methods -nilfunc -printf 
 EXTERNAL_TOOLS=
 BUILD_TAGS?=${TOOL}
 GOFMT_FILES?=$$(find . -name '*.go')
+PLUGIN_NAME := $(shell command ls cmd/)
+PLUGIN_DIR ?= $$GOPATH/vault-plugins
 
 default: dev
 
@@ -46,5 +48,13 @@ fmtcheck:
 
 fmt:
 	gofmt -w $(GOFMT_FILES)
+
+configure: dev
+	./bootstrap/configure.sh \
+	$(PLUGIN_DIR) \
+	$(PLUGIN_NAME) \
+	$(CONNECTION_URL) \
+	$(PRIVATE_KEY) \
+	$(SNOWFLAKE_USERNAME)
 
 .PHONY: bin default generate test vet bootstrap fmt fmtcheck

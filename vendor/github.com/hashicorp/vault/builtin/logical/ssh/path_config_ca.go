@@ -17,6 +17,7 @@ import (
 	"io"
 
 	multierror "github.com/hashicorp/go-multierror"
+	"github.com/hashicorp/vault/builtin/logical/ssh/managed_key"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/helper/cryptoutil"
 	"github.com/hashicorp/vault/sdk/logical"
@@ -31,10 +32,17 @@ const (
 	caPublicKeyStoragePathDeprecated  = "public_key"
 	caPrivateKeyStoragePath           = "config/ca_private_key"
 	caPrivateKeyStoragePathDeprecated = "config/ca_bundle"
+	caManagedKeyStoragePath           = "config/ca_managed_key"
 )
 
 type keyStorageEntry struct {
 	Key string `json:"key" structs:"key" mapstructure:"key"`
+}
+
+type managedKeyStorageEntry struct {
+	KeyId     managed_key.UUIDKey `json:"key_id" structs:"key_id" mapstructure:"key_id"`
+	KeyName   managed_key.NameKey `json:"key_name" structs:"key_name" mapstructure:"key_name"`
+	PublicKey string              `json:"public_key" structs:"public_key" mapstructure:"public_key"`
 }
 
 func pathConfigCA(b *backend) *framework.Path {
@@ -56,7 +64,7 @@ func pathConfigCA(b *backend) *framework.Path {
 			},
 			"generate_signing_key": {
 				Type:        framework.TypeBool,
-				Description: `Generate SSH key pair internally rather than use the private_key and public_key fields.`,
+				Description: `Generate SSH key pair internally rather than use the private_key and public_key fields. If managed key config is provided, this field is ignored.`,
 				Default:     true,
 			},
 			"key_type": {
@@ -68,6 +76,14 @@ func pathConfigCA(b *backend) *framework.Path {
 				Type:        framework.TypeInt,
 				Description: `Specifies the desired key bits when generating variable-length keys (such as when key_type="ssh-rsa") or which NIST P-curve to use when key_type="ec" (256, 384, or 521).`,
 				Default:     0,
+			},
+			"managed_key_name": {
+				Type:        framework.TypeString,
+				Description: `The name of the managed key to use. When using a managed key, this field or managed_key_id is required.`,
+			},
+			"managed_key_id": {
+				Type:        framework.TypeString,
+				Description: `The id of the managed key to use. When using a managed key, this field or managed_key_name is required.`,
 			},
 		},
 
@@ -91,6 +107,9 @@ func pathConfigCA(b *backend) *framework.Path {
 					OperationSuffix: "ca-configuration",
 				},
 			},
+			logical.RecoverOperation: &framework.PathOperation{
+				Callback: b.pathConfigCARecover,
+			},
 		},
 
 		HelpSynopsis: `Set the SSH private key used for signing certificates.`,
@@ -104,18 +123,20 @@ Read operations will return the public key, if already stored/generated.`,
 }
 
 func (b *backend) pathConfigCARead(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	publicKeyEntry, err := caKey(ctx, req.Storage, caPublicKey)
+	// prevent migration from deprecated paths on snapshot read as writes to a loaded snapshot storage are forbidden
+	allowMigration := !req.IsSnapshotReadOrList()
+	publicKey, err := getCAPublicKey(ctx, req.Storage, allowMigration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read CA public key: %w", err)
 	}
 
-	if publicKeyEntry == nil {
+	if publicKey == "" {
 		return logical.ErrorResponse("keys haven't been configured yet"), nil
 	}
 
 	response := &logical.Response{
 		Data: map[string]interface{}{
-			"public_key": publicKeyEntry.Key,
+			"public_key": publicKey,
 		},
 	}
 
@@ -126,13 +147,22 @@ func (b *backend) pathConfigCADelete(ctx context.Context, req *logical.Request, 
 	if err := req.Storage.Delete(ctx, caPrivateKeyStoragePath); err != nil {
 		return nil, err
 	}
+	if err := req.Storage.Delete(ctx, caPrivateKeyStoragePathDeprecated); err != nil {
+		return nil, err
+	}
 	if err := req.Storage.Delete(ctx, caPublicKeyStoragePath); err != nil {
+		return nil, err
+	}
+	if err := req.Storage.Delete(ctx, caPublicKeyStoragePathDeprecated); err != nil {
+		return nil, err
+	}
+	if err := req.Storage.Delete(ctx, caManagedKeyStoragePath); err != nil {
 		return nil, err
 	}
 	return nil, nil
 }
 
-func caKey(ctx context.Context, storage logical.Storage, keyType string) (*keyStorageEntry, error) {
+func readStoredKeyEntry(ctx context.Context, storage logical.Storage, keyType string, allowMigration bool) (*logical.StorageEntry, error) {
 	var path, deprecatedPath string
 	switch keyType {
 	case caPrivateKey:
@@ -157,25 +187,39 @@ func caKey(ctx context.Context, storage logical.Storage, keyType string) (*keySt
 		if err != nil {
 			return nil, err
 		}
+
 		if entry != nil {
+			// modify entry variable, both for possible migration and also to comply with the expected JSON entry for the caller
 			entry, err = logical.StorageEntryJSON(path, keyStorageEntry{
 				Key: string(entry.Value),
 			})
 			if err != nil {
 				return nil, err
 			}
-			if err := storage.Put(ctx, entry); err != nil {
-				return nil, err
-			}
-			if err = storage.Delete(ctx, deprecatedPath); err != nil {
-				return nil, err
+			// migrations are disable on recover, as we can't write to the loaded snapshot storage
+			if allowMigration {
+				if err := storage.Put(ctx, entry); err != nil {
+					return nil, err
+				}
+				if err = storage.Delete(ctx, deprecatedPath); err != nil {
+					return nil, err
+				}
 			}
 		}
+	}
+	return entry, nil
+}
+
+// readStoredKey reads a key from storage, returning nil if not found.
+// ignore-nil-nil-function-check
+func readStoredKey(ctx context.Context, storage logical.Storage, keyType string, allowMigration bool) (*keyStorageEntry, error) {
+	entry, err := readStoredKeyEntry(ctx, storage, keyType, allowMigration)
+	if err != nil {
+		return nil, err
 	}
 	if entry == nil {
 		return nil, nil
 	}
-
 	var keyEntry keyStorageEntry
 	if err := entry.DecodeJSON(&keyEntry); err != nil {
 		return nil, err
@@ -185,114 +229,57 @@ func caKey(ctx context.Context, storage logical.Storage, keyType string) (*keySt
 }
 
 func (b *backend) pathConfigCAUpdate(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
-	var err error
-	publicKey := data.Get("public_key").(string)
-	privateKey := data.Get("private_key").(string)
-
-	var generateSigningKey bool
-
-	generateSigningKeyRaw, ok := data.GetOk("generate_signing_key")
-	switch {
-	// explicitly set true
-	case ok && generateSigningKeyRaw.(bool):
-		if publicKey != "" || privateKey != "" {
-			return logical.ErrorResponse("public_key and private_key must not be set when generate_signing_key is set to true"), nil
-		}
-
-		generateSigningKey = true
-
-	// explicitly set to false, or not set and we have both a public and private key
-	case ok, publicKey != "" && privateKey != "":
-		if publicKey == "" {
-			return logical.ErrorResponse("missing public_key"), nil
-		}
-
-		if privateKey == "" {
-			return logical.ErrorResponse("missing private_key"), nil
-		}
-
-		_, err := ssh.ParsePrivateKey([]byte(privateKey))
-		if err != nil {
-			return logical.ErrorResponse(fmt.Sprintf("Unable to parse private_key as an SSH private key: %v", err)), nil
-		}
-
-		_, err = parsePublicSSHKey(publicKey)
-		if err != nil {
-			return logical.ErrorResponse(fmt.Sprintf("Unable to parse public_key as an SSH public key: %v", err)), nil
-		}
-
-	// not set and no public/private key provided so generate
-	case publicKey == "" && privateKey == "":
-		generateSigningKey = true
-
-	// not set, but one or the other supplied
-	default:
-		return logical.ErrorResponse("only one of public_key and private_key set; both must be set to use, or both must be blank to auto-generate"), nil
-	}
-
-	if generateSigningKey {
-		keyType := data.Get("key_type").(string)
-		keyBits := data.Get("key_bits").(int)
-
-		publicKey, privateKey, err = generateSSHKeyPair(b.Backend.GetRandomReader(), keyType, keyBits)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	if publicKey == "" || privateKey == "" {
-		return nil, fmt.Errorf("failed to generate or parse the keys")
-	}
-
-	publicKeyEntry, err := caKey(ctx, req.Storage, caPublicKey)
+	found, err := caKeysConfigured(ctx, req.Storage)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read CA public key: %w", err)
+		return nil, err
 	}
-
-	privateKeyEntry, err := caKey(ctx, req.Storage, caPrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read CA private key: %w", err)
-	}
-
-	if (publicKeyEntry != nil && publicKeyEntry.Key != "") || (privateKeyEntry != nil && privateKeyEntry.Key != "") {
+	if found {
 		return logical.ErrorResponse("keys are already configured; delete them before reconfiguring"), nil
 	}
 
-	entry, err := logical.StorageEntryJSON(caPublicKeyStoragePath, &keyStorageEntry{
-		Key: publicKey,
-	})
-	if err != nil {
-		return nil, err
-	}
+	publicKey := data.Get("public_key").(string)
+	privateKey := data.Get("private_key").(string)
 
-	// Save the public key
-	err = req.Storage.Put(ctx, entry)
-	if err != nil {
-		return nil, err
-	}
+	managedKeyName := data.Get("managed_key_name").(string)
+	managedKeyID := data.Get("managed_key_id").(string)
 
-	entry, err = logical.StorageEntryJSON(caPrivateKeyStoragePath, &keyStorageEntry{
-		Key: privateKey,
-	})
-	if err != nil {
-		return nil, err
-	}
+	useManagedKey := managedKeyName != "" || managedKeyID != ""
 
-	// Save the private key
-	err = req.Storage.Put(ctx, entry)
-	if err != nil {
-		var mErr *multierror.Error
+	generateSigningKey := data.Get("generate_signing_key").(bool)
 
-		mErr = multierror.Append(mErr, fmt.Errorf("failed to store CA private key: %w", err))
+	if useManagedKey {
+		generateSigningKey = false
+		err = b.createManagedKey(ctx, req.Storage, managedKeyName, managedKeyID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if publicKey != "" && privateKey != "" {
+			_, err := ssh.ParsePrivateKey([]byte(privateKey))
+			if err != nil {
+				return logical.ErrorResponse(fmt.Sprintf("Unable to parse private_key as an SSH private key: %v", err)), nil
+			}
 
-		// If storing private key fails, the corresponding public key should be
-		// removed
-		if delErr := req.Storage.Delete(ctx, caPublicKeyStoragePath); delErr != nil {
-			mErr = multierror.Append(mErr, fmt.Errorf("failed to cleanup CA public key: %w", delErr))
-			return nil, mErr
+			_, err = parsePublicSSHKey(publicKey)
+			if err != nil {
+				return logical.ErrorResponse(fmt.Sprintf("Unable to parse public_key as an SSH public key: %v", err)), nil
+			}
+		} else if generateSigningKey {
+			keyType := data.Get("key_type").(string)
+			keyBits := data.Get("key_bits").(int)
+
+			publicKey, privateKey, err = generateSSHKeyPair(b.Backend.GetRandomReader(), keyType, keyBits)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return logical.ErrorResponse("if generate_signing_key is false, either both public_key and private_key or a managed key must be provided"), nil
 		}
 
-		return nil, err
+		err = createStoredKey(ctx, req.Storage, publicKey, privateKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if generateSigningKey {
@@ -306,6 +293,51 @@ func (b *backend) pathConfigCAUpdate(ctx context.Context, req *logical.Request, 
 	}
 
 	return nil, nil
+}
+
+func createStoredKey(ctx context.Context, s logical.Storage, publicKey, privateKey string) error {
+	if publicKey == "" || privateKey == "" {
+		return fmt.Errorf("failed to generate or parse the keys")
+	}
+
+	entry, err := logical.StorageEntryJSON(caPublicKeyStoragePath, &keyStorageEntry{
+		Key: publicKey,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Save the public key
+	err = s.Put(ctx, entry)
+	if err != nil {
+		return err
+	}
+
+	entry, err = logical.StorageEntryJSON(caPrivateKeyStoragePath, &keyStorageEntry{
+		Key: privateKey,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Save the private key
+	err = s.Put(ctx, entry)
+	if err != nil {
+		var mErr *multierror.Error
+
+		mErr = multierror.Append(mErr, fmt.Errorf("failed to store CA private key: %w", err))
+
+		// If storing private key fails, the corresponding public key should be
+		// removed
+		if delErr := s.Delete(ctx, caPublicKeyStoragePath); delErr != nil {
+			mErr = multierror.Append(mErr, fmt.Errorf("failed to cleanup CA public key: %w", delErr))
+			return mErr
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func generateSSHKeyPair(randomSource io.Reader, keyType string, keyBits int) (string, string, error) {
@@ -405,4 +437,173 @@ func generateSSHKeyPair(randomSource io.Reader, keyType string, keyBits int) (st
 	}
 
 	return string(ssh.MarshalAuthorizedKey(public)), string(pem.EncodeToMemory(privateBlock)), nil
+}
+
+func (b *backend) createManagedKey(ctx context.Context, s logical.Storage, managedKeyName, managedKeyId string) error {
+	var keyId managed_key.UUIDKey
+	var keyName managed_key.NameKey
+	var keyInfo *managed_key.ManagedKeyInfo
+	var err error
+
+	if managedKeyId != "" {
+		keyId = managed_key.UUIDKey(managedKeyId)
+		keyInfo, err = managed_key.GetManagedKeyInfo(ctx, b, keyId)
+	} else if managedKeyName != "" {
+		keyName = managed_key.NameKey(managedKeyName)
+		keyInfo, err = managed_key.GetManagedKeyInfo(ctx, b, keyName)
+	}
+
+	if err != nil {
+		return fmt.Errorf("error retrieving public key: %s", err)
+	}
+
+	entry, err := logical.StorageEntryJSON(caManagedKeyStoragePath, &managedKeyStorageEntry{
+		PublicKey: string(ssh.MarshalAuthorizedKey(keyInfo.PublicKey())),
+		KeyName:   keyInfo.Name,
+		KeyId:     keyInfo.Uuid,
+	})
+	if err != nil {
+		return fmt.Errorf("error creating storage entry: %s", err)
+	}
+
+	// Save the public key
+	err = s.Put(ctx, entry)
+	if err != nil {
+		return fmt.Errorf("error writing key entry to storage: %s", err)
+	}
+
+	return nil
+}
+
+func getCAPublicKey(ctx context.Context, storage logical.Storage, allowMigration bool) (string, error) {
+	var publicKey string
+
+	storedKeyEntry, err := readStoredKey(ctx, storage, caPublicKey, allowMigration)
+	if err != nil {
+		return "", err
+	}
+
+	if storedKeyEntry == nil {
+		managedKeyEntry, err := readManagedKey(ctx, storage)
+		if err != nil {
+			return "", err
+		}
+
+		if managedKeyEntry == nil {
+			return "", nil
+		}
+
+		publicKey = managedKeyEntry.PublicKey
+	} else {
+		publicKey = storedKeyEntry.Key
+	}
+
+	return publicKey, nil
+}
+
+func readManagedKey(ctx context.Context, storage logical.Storage) (*managedKeyStorageEntry, error) {
+	entry, err := storage.Get(ctx, caManagedKeyStoragePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CA key of type managed key: %w", err)
+	}
+
+	if entry == nil {
+		return nil, nil
+	}
+
+	var keyEntry managedKeyStorageEntry
+	if err := entry.DecodeJSON(&keyEntry); err != nil {
+		return nil, err
+	}
+
+	return &keyEntry, nil
+}
+
+func caKeysConfigured(ctx context.Context, s logical.Storage) (bool, error) {
+	const allowMigration = false // no need to allow migration when just checking for existence, we can do that later
+	publicKeyEntry, err := readStoredKey(ctx, s, caPublicKey, allowMigration)
+	if err != nil {
+		return false, fmt.Errorf("failed to read CA public key: %w", err)
+	}
+
+	privateKeyEntry, err := readStoredKey(ctx, s, caPrivateKey, allowMigration)
+	if err != nil {
+		return false, fmt.Errorf("failed to read CA private key: %w", err)
+	}
+
+	if (publicKeyEntry != nil && publicKeyEntry.Key != "") || (privateKeyEntry != nil && privateKeyEntry.Key != "") {
+		return true, nil
+	}
+
+	managedKeyEntry, err := readManagedKey(ctx, s)
+	if err != nil {
+		return false, fmt.Errorf("failed to read CA managed key: %w", err)
+	}
+
+	if managedKeyEntry != nil {
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// pathConfigCARecover recovers the CA from the target snapshot back to the live storage.
+// ignore-nil-nil-function-check
+func (b *backend) pathConfigCARecover(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	// check live storage for existing keys. Disallow recovery if CA is already configured for consistency with create operation
+	found, err := caKeysConfigured(ctx, req.Storage)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return logical.ErrorResponse("keys are already configured; delete them before recovering the CA"), nil
+	}
+
+	// fetch directly from the snapshot storage instead of following the usual restore procedure of getting the values
+	// from the req.Data, since those came from a previous CARead operation on the loaded snapshot, which only contains
+	// the public key.
+	snapshotStorage, err := logical.NewSnapshotStorageView(req)
+	if err != nil {
+		return nil, err
+	}
+	const allowMigration = false // prevent migration from deprecated paths as we can't allow writes on the snapshot storage
+	publicKeyEntry, err := readStoredKeyEntry(ctx, snapshotStorage, caPublicKey, allowMigration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CA public key for restore: %w", err)
+	}
+	privateKeyEntry, err := readStoredKeyEntry(ctx, snapshotStorage, caPrivateKey, allowMigration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CA private key for restore: %w", err)
+	}
+	managedKey, err := readManagedKey(ctx, snapshotStorage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CA managed key for restore: %w", err)
+	}
+
+	if publicKeyEntry == nil && privateKeyEntry == nil && managedKey == nil {
+		return logical.ErrorResponse("no CA keys found in snapshot storage to restore"), nil
+	}
+
+	// it's possible that we've read the keys from a deprecated path in the snapshot, but it should be automatically
+	// upgraded to the new path anyway, so we don't care about restoring it back to the deprecated path
+	if publicKeyEntry != nil {
+		err = req.Storage.Put(ctx, publicKeyEntry)
+		if err != nil {
+			return nil, fmt.Errorf("failed to restore public key entry in storage: %w", err)
+		}
+	}
+	if privateKeyEntry != nil {
+		err = req.Storage.Put(ctx, privateKeyEntry)
+		if err != nil {
+			return nil, fmt.Errorf("failed to restore private key entry in storage: %w", err)
+		}
+	}
+	if managedKey != nil {
+		err = b.createManagedKey(ctx, req.Storage, managedKey.KeyName.String(), managedKey.KeyId.String())
+		if err != nil {
+			return nil, fmt.Errorf("failed to restore managed key entry in storage: %w", err)
+		}
+	}
+
+	return nil, nil
 }
